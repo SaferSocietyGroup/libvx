@@ -1,0 +1,13 @@
+# libvx pkg-config file
+
+prefix=${pcfiledir}/../..
+libdir=${prefix}/lib
+includedir=${prefix}/include/libvx
+
+Name: libvx
+Description: libvx is a library for easy video frame extraction
+Version: 0.1.0
+Requires:  libavdevice libavformat libavcodec libavfilter libswscale libavutil
+Conflicts:
+Libs: -L${libdir} -lvx
+Cflags: -I${includedir}

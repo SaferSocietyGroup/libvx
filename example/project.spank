@@ -1,0 +1,4 @@
+name       test
+sourcedir  ../src .
+cflags     ggdb std=c99 Wall I../include
+lib        libavdevice libavformat libavcodec libavfilter libswscale libavutil
