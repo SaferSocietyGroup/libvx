@@ -37,8 +37,6 @@ Usage
 -----
 
 ```c
-//example.c
-
 #include <libvx.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -53,19 +51,19 @@ int main(int argc, char** argv)
         vx_video_t* video;
 
         ret = vx_open(&video, argv[1]);
-        LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]); 
+        LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]);        
 
         int w = vx_get_width(video), h = vx_get_height(video);
-        char* frame_data = calloc(1, w * h);
+        char* frame_data = vx_alloc_frame_buffer(w, h, VX_PIX_FMT_GRAY8);
         LASSERT(frame_data, "could not allocate frame data buffer");
 
         while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, frame_data) == VX_ERR_SUCCESS ){
                 // do something with grayscale frame_data 
-                // use VX_PIX_FMT_RGB24 for RGB data but remember to * 3 in image_data allocation 
+                // use VX_PIX_FMT_RGB24 in vx_get_frame and vx_alloc_frame_buffer for RGB data
         }
 
         vx_close(video);
-        free(frame_data);
+        vx_free_frame_buffer(frame_data);
 
         return 0;
 }
