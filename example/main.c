@@ -15,7 +15,8 @@ int main(int argc, char** argv)
 	LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]);	
 
 	int w = vx_get_width(video), h = vx_get_height(video);
-	char* buffer = calloc(1, w * h);
+
+	char* buffer = vx_alloc_frame_buffer(w, h, VX_PIX_FMT_GRAY8);
 	LASSERT(buffer, "could not allocate frame buffer");
 
 	float fps = 30.0f;
@@ -35,9 +36,8 @@ int main(int argc, char** argv)
 	}
 	printf("\n");
 
+	vx_free_frame_buffer(buffer);
 	vx_close(video);
-
-	free(buffer);
 
 	return 0;
 }

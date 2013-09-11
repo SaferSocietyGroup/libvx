@@ -42,6 +42,9 @@ vx_error_t vx_get_duration(vx_video_t* video, float* out_duration);
 vx_error_t vx_get_frame(vx_video_t* video, int width, int height, vx_pix_fmt_t pix_fmt, void* out_buffer);
 const char* vx_get_error_str(vx_error_t error);
 
+void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt_t pix_fmt);
+void vx_free_frame_buffer(void* buffer);
+
 #ifdef __cplusplus
 }
 #endif

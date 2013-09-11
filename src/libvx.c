@@ -224,3 +224,14 @@ vx_error_t vx_get_pixel_aspect_ratio(vx_video_t* me, float* out_par)
 	*out_par = (float)av_q2d(par);
 	return VX_ERR_SUCCESS;
 }
+
+void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt_t pix_fmt)
+{
+	int av_pixfmt = pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
+	return av_malloc(avpicture_get_size(av_pixfmt, width, height));
+}
+
+void vx_free_frame_buffer(void* buffer)
+{
+	free(buffer);
+}
