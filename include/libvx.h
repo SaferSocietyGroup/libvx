@@ -25,6 +25,7 @@ typedef enum {
 	VX_ERR_EOF             = 9,
 	VX_ERR_DECODE_VIDEO    = 10,
 	VX_ERR_SCALING         = 11,
+	VX_ERR_PIXEL_ASPECT    = 12,
 } vx_error_t;
 
 vx_error_t vx_open(vx_video_t** video, const char* filename);
@@ -33,10 +34,13 @@ void vx_close(vx_video_t* video);
 int vx_get_width(vx_video_t* video);
 int vx_get_height(vx_video_t* video);
 
+vx_error_t vx_get_pixel_aspect_ratio(vx_video_t* video, float* out_par);
+
 vx_error_t vx_get_frame_rate(vx_video_t* video, float* out_fps);
 vx_error_t vx_get_duration(vx_video_t* video, float* out_duration);
 
 vx_error_t vx_get_frame(vx_video_t* video, int width, int height, vx_pix_fmt_t pix_fmt, void* out_buffer);
+const char* vx_get_error_str(vx_error_t error);
 
 #ifdef __cplusplus
 }

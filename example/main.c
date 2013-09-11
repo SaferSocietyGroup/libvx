@@ -12,7 +12,7 @@ int main(int argc, char** argv)
 	vx_video_t* video;
 
 	ret = vx_open(&video, argv[1]);
-	LASSERT(ret == VX_ERR_SUCCESS, "could not open video file: %s", argv[1]);	
+	LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]);	
 
 	int w = vx_get_width(video), h = vx_get_height(video);
 	char* buffer = calloc(1, w * h);
@@ -20,10 +20,14 @@ int main(int argc, char** argv)
 
 	float fps = 30.0f;
 	if(vx_get_frame_rate(video, &fps) != VX_ERR_SUCCESS)
-		printf("could not determine fps, guessing 30.0\n");
+		printf("could not determine fps, guessing %f\n", fps);
+
+	float par = 1.0f;
+	if(vx_get_pixel_aspect_ratio(video, &par) != VX_ERR_SUCCESS)
+		printf("could not determine pixel aspect ratio, guessing %f\n", par);
 
 	printf("video file: %s\n", argv[0]);
-	printf("%d x %d @ %.2f fps\n", w, h, fps);
+	printf("%d x %d @ %.2f fps, PAR: %.2f\n", w, h, fps, par);
 
 	int num = 0;
 	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, buffer) == VX_ERR_SUCCESS ){
@@ -32,6 +36,8 @@ int main(int argc, char** argv)
 	printf("\n");
 
 	vx_close(video);
+
+	free(buffer);
 
 	return 0;
 }
