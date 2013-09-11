@@ -12,6 +12,13 @@ Authors
 -------
  * Fredrik Hultin <noname@nurd.se>, NetClean AB
 
+Dependencies
+------------
+   * ffmpeg (libavformat, libavcodec, libavutil, etc.)
+   * A C99 capable compiler (gcc, mingw, clang, etc.)
+   * pkg-config
+   * CMake (or spank, https://github.com/noname22/spank)
+
 Compiling & Installing
 ----------------------
 
