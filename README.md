@@ -12,6 +12,12 @@ Authors
 -------
  * Fredrik Hultin <noname@nurd.se>, NetClean AB
 
+Dependencies
+------------
+   * ffmpeg (libavformat, libavcodec, libavutil, etc.)
+   * A C99 capable compiler (gcc, mingw, clang, etc.)
+   * pkg-config
+
 Compiling & Installing
 ----------------------
 
