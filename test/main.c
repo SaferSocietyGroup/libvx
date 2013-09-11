@@ -18,7 +18,7 @@ int main(int argc, char** argv)
 	int w = vx_get_width(video);
 	int h = vx_get_height(video);
 
-	char* buffer = calloc(1, w * h);
+	char* buffer = vx_alloc_frame_buffer(w, h, VX_PIX_FMT_GRAY8);
 	LASSERT(buffer, "could not allocate frame buffer");
 
 	SDL_Init(SDL_INIT_EVERYTHING);
@@ -33,6 +33,7 @@ int main(int argc, char** argv)
 	printf("\n");
 
 	vx_close(video);
+	vx_free_frame_buffer(buffer);
 
 	return 0;
 }
