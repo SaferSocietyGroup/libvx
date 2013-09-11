@@ -194,7 +194,7 @@ vx_error_t vx_get_duration(vx_video_t* me, float* out_duration)
 
 const char* vx_get_error_str(vx_error_t error)
 {
-	if(error > VX_ERR_SCALING || error < 0)
+	if(error > VX_ERR_SCALING)
 		error = VX_ERR_UNKNOWN;
 
 	const char* err_str[] = {
