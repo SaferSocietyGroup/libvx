@@ -5,12 +5,12 @@
 extern "C" {
 #endif
 
-typedef struct vx_video vx_video_t;
+typedef struct vx_video vx_video;
 
 typedef enum {
 	VX_PIX_FMT_RGB24 = 0,
 	VX_PIX_FMT_GRAY8 = 1,
-} vx_pix_fmt_t;
+} vx_pix_fmt;
 
 typedef enum {
 	VX_ERR_SUCCESS         = 0,
@@ -26,23 +26,23 @@ typedef enum {
 	VX_ERR_DECODE_VIDEO    = 10,
 	VX_ERR_SCALING         = 11,
 	VX_ERR_PIXEL_ASPECT    = 12,
-} vx_error_t;
+} vx_error;
 
-vx_error_t vx_open(vx_video_t** video, const char* filename);
-void vx_close(vx_video_t* video);
+vx_error vx_open(vx_video** video, const char* filename);
+void vx_close(vx_video* video);
 
-int vx_get_width(vx_video_t* video);
-int vx_get_height(vx_video_t* video);
+int vx_get_width(vx_video* video);
+int vx_get_height(vx_video* video);
 
-vx_error_t vx_get_pixel_aspect_ratio(vx_video_t* video, float* out_par);
+vx_error vx_get_pixel_aspect_ratio(vx_video* video, float* out_par);
 
-vx_error_t vx_get_frame_rate(vx_video_t* video, float* out_fps);
-vx_error_t vx_get_duration(vx_video_t* video, float* out_duration);
+vx_error vx_get_frame_rate(vx_video* video, float* out_fps);
+vx_error vx_get_duration(vx_video* video, float* out_duration);
 
-vx_error_t vx_get_frame(vx_video_t* video, int width, int height, vx_pix_fmt_t pix_fmt, void* out_buffer);
-const char* vx_get_error_str(vx_error_t error);
+vx_error vx_get_frame(vx_video* video, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer);
+const char* vx_get_error_str(vx_error error);
 
-void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt_t pix_fmt);
+void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt pix_fmt);
 void vx_free_frame_buffer(void* buffer);
 
 #ifdef __cplusplus

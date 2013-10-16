@@ -8,8 +8,8 @@ int main(int argc, char** argv)
 {
 	LASSERT(argc == 2, "usage: %s [videofile]", argv[0]);
 
-	vx_error_t ret;
-	vx_video_t* video;
+	vx_error ret;
+	vx_video* video;
 
 	ret = vx_open(&video, argv[1]);
 	LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]);	

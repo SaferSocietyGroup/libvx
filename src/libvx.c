@@ -17,18 +17,18 @@ struct vx_video {
 	int stream;
 };
 
-vx_error_t vx_open(vx_video_t** video, const char* filename)
+vx_error vx_open(vx_video** video, const char* filename)
 {
 	if(!initialized){
 		initialized = true;
 		av_register_all();
 	}
 
-	vx_video_t* me = calloc(1, sizeof(vx_video_t));
+	vx_video* me = calloc(1, sizeof(vx_video));
 	if(!me)
 		return VX_ERR_ALLOCATE;
 	
-	vx_error_t error = VX_ERR_UNKNOWN;
+	vx_error error = VX_ERR_UNKNOWN;
 
 	// open stream
 	if(avformat_open_input(&me->fmt_ctx, filename, NULL, NULL) != 0){
@@ -82,7 +82,7 @@ cleanup:
 	return error;
 }
 
-void vx_close(vx_video_t* me)
+void vx_close(vx_video* me)
 {
 	assert(me);
 	
@@ -95,17 +95,17 @@ void vx_close(vx_video_t* me)
 	free(me);
 }
 
-int vx_get_width(vx_video_t* me)
+int vx_get_width(vx_video* me)
 {
 	return me->codec_ctx->width;
 }
 
-int vx_get_height(vx_video_t* me)
+int vx_get_height(vx_video* me)
 {
 	return me->codec_ctx->height;
 }
 
-vx_error_t vx_get_frame(vx_video_t* me, int width, int height, vx_pix_fmt_t pix_fmt, void* buffer)
+vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, void* buffer)
 {
 	AVPacket packet;
 	memset(&packet, 0, sizeof(packet));
@@ -113,7 +113,7 @@ vx_error_t vx_get_frame(vx_video_t* me, int width, int height, vx_pix_fmt_t pix_
 	int frame_finished = 0;
 	AVFrame* frame = avcodec_alloc_frame();
 
-	vx_error_t ret = VX_ERR_UNKNOWN;
+	vx_error ret = VX_ERR_UNKNOWN;
 
 	for(int i = 0; i < 1024; i++){
 		if(av_read_frame(me->fmt_ctx, &packet) < 0){
@@ -175,7 +175,7 @@ cleanup:
 	return ret;
 }
 
-vx_error_t vx_get_frame_rate(vx_video_t* me, float* out_fps)
+vx_error vx_get_frame_rate(vx_video* me, float* out_fps)
 {
 	AVRational rate = me->fmt_ctx->streams[me->stream]->avg_frame_rate;
 
@@ -186,13 +186,13 @@ vx_error_t vx_get_frame_rate(vx_video_t* me, float* out_fps)
 	return VX_ERR_SUCCESS;
 }
 
-vx_error_t vx_get_duration(vx_video_t* me, float* out_duration)
+vx_error vx_get_duration(vx_video* me, float* out_duration)
 {
 	*out_duration = (float)me->fmt_ctx->duration / (float)AV_TIME_BASE;
 	return VX_ERR_SUCCESS;
 }
 
-const char* vx_get_error_str(vx_error_t error)
+const char* vx_get_error_str(vx_error error)
 {
 	if(error > VX_ERR_SCALING)
 		error = VX_ERR_UNKNOWN;
@@ -215,7 +215,7 @@ const char* vx_get_error_str(vx_error_t error)
 	return err_str[error];
 }
 
-vx_error_t vx_get_pixel_aspect_ratio(vx_video_t* me, float* out_par)
+vx_error vx_get_pixel_aspect_ratio(vx_video* me, float* out_par)
 {
 	AVRational par = me->codec_ctx->sample_aspect_ratio;
 	if(par.num == 0 && par.den == 1)
@@ -225,7 +225,7 @@ vx_error_t vx_get_pixel_aspect_ratio(vx_video_t* me, float* out_par)
 	return VX_ERR_SUCCESS;
 }
 
-void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt_t pix_fmt)
+void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt pix_fmt)
 {
 	int av_pixfmt = pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
 	return av_malloc(avpicture_get_size(av_pixfmt, width, height));
