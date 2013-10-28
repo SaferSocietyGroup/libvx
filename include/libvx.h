@@ -34,6 +34,11 @@ void vx_close(vx_video* video);
 int vx_get_width(vx_video* video);
 int vx_get_height(vx_video* video);
 
+long long vx_get_file_position(vx_video* video);
+long long vx_get_file_size(vx_video* video);
+
+vx_error vx_count_frames_in_file(const char* filename, int* out_num_frames);
+
 vx_error vx_get_pixel_aspect_ratio(vx_video* video, float* out_par);
 
 vx_error vx_get_frame_rate(vx_video* video, float* out_fps);

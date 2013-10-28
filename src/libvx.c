@@ -42,32 +42,23 @@ vx_error vx_open(vx_video** video, const char* filename)
 		goto cleanup;
 	}
 	
-	// Find the first video stream
-	me->stream = -1;
+	// Find the best video stream
+	AVCodec* codec;
+	me->stream = av_find_best_stream(me->fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
 
-	for(unsigned int i = 0; i < me->fmt_ctx->nb_streams; i++){
-		if(me->fmt_ctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
-			me->stream = i;
-			break;
-		}
-	}
+	if(me->stream < 0){
+		if(me->stream == AVERROR_STREAM_NOT_FOUND)
+			error = VX_ERR_VIDEO_STREAM;
 
-	if(me->stream == -1){
-		error = VX_ERR_VIDEO_STREAM;
+		if(me->stream == AVERROR_DECODER_NOT_FOUND)
+			error = VX_ERR_FIND_CODEC;
+
 		goto cleanup;
 	}
 
 	// Get a pointer to the codec context for the video stream
 	me->codec_ctx = me->fmt_ctx->streams[me->stream]->codec;
-
-	// Find the decoder for the video stream
-	AVCodec* codec = avcodec_find_decoder(me->codec_ctx->codec_id);
-		
-	if(!codec){
-		error = VX_ERR_FIND_CODEC;
-		goto cleanup;
-	}
-
+	
 	// Open codec
 	if(avcodec_open2(me->codec_ctx, codec, NULL) < 0){
 		error = VX_ERR_OPEN_CODEC;
@@ -95,6 +86,52 @@ void vx_close(vx_video* me)
 	free(me);
 }
 
+static vx_error count_frames(vx_video* me, int* out_num_frames)
+{
+	assert(me);
+	int num_frames = 0;
+
+	AVPacket packet;
+
+	while(true){
+		memset(&packet, 0, sizeof(packet));
+
+		if(av_read_frame(me->fmt_ctx, &packet) < 0){
+			break;
+		}
+
+		if(packet.stream_index == me->stream){
+			num_frames++;
+		}
+
+		av_free_packet(&packet);
+	}
+
+	if(packet.data)
+		av_free_packet(&packet);
+
+	*out_num_frames = num_frames;
+
+	return VX_ERR_SUCCESS;
+}
+
+
+vx_error vx_count_frames_in_file(const char* filename, int* out_num_frames)
+{
+	vx_video* video = NULL;
+	vx_error ret;
+
+	ret = vx_open(&video, filename);
+	if(ret != VX_ERR_SUCCESS)
+		return ret;
+
+	ret = count_frames(video, out_num_frames);
+
+	vx_close(video);
+
+	return ret;
+}
+
 int vx_get_width(vx_video* me)
 {
 	return me->codec_ctx->width;
@@ -103,6 +140,16 @@ int vx_get_width(vx_video* me)
 int vx_get_height(vx_video* me)
 {
 	return me->codec_ctx->height;
+}
+
+long long vx_get_file_position(vx_video* video)
+{
+	return video->fmt_ctx->pb->pos; 
+}
+
+long long vx_get_file_size(vx_video* video)
+{
+	return avio_size(video->fmt_ctx->pb);
 }
 
 vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, void* buffer)
