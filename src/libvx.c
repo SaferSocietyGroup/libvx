@@ -280,5 +280,5 @@ void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt pix_fmt)
 
 void vx_free_frame_buffer(void* buffer)
 {
-	free(buffer);
+	av_free(buffer);
 }
