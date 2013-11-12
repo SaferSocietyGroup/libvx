@@ -1,7 +1,7 @@
 name		vx
 targettype	lib-static
 sourcedir	src
-cflags		Iinclude std=c99 Wall
+cflags		Iinclude g std=c99 Wall
 
 inst_copy	$(target) $(inst_prefix)lib/$(target)
 
