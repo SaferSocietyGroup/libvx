@@ -1,11 +1,12 @@
-name		vx
+name		    vx
 targettype	lib-static
-sourcedir	src
-cflags		Iinclude g std=c99 Wall
+sourcedir	  src
+cflags		  Iinclude g std=c99 Wall
 
-inst_copy	$(target) $(inst_prefix)lib/$(target)
+inst_copy	  $(target) $(inst_prefix)lib/$(target)
 
 inst_mkdir	$(inst_prefix)/include/libvx
-inst_copy	include/libvx.h $(inst_prefix)/include/libvx
+inst_copy	  include/libvx.h $(inst_prefix)/include/libvx
 
-inst_copy	pkg-config/libvx.pc $(inst_prefix)lib/pkgconfig/libvx.pc
+inst_mkdir  $(inst_prefix)lib/pkgconfig
+inst_copy	  pkg-config/libvx.pc $(inst_prefix)lib/pkgconfig/libvx.pc

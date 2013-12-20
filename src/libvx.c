@@ -22,6 +22,7 @@ vx_error vx_open(vx_video** video, const char* filename)
 	if(!initialized){
 		initialized = true;
 		av_register_all();
+		avcodec_register_all();
 	}
 
 	vx_video* me = calloc(1, sizeof(vx_video));
@@ -76,12 +77,13 @@ cleanup:
 void vx_close(vx_video* me)
 {
 	assert(me);
-	
+
 	if(me->fmt_ctx)
 		avformat_free_context(me->fmt_ctx);
 
-	if(me->codec_ctx)
-		avcodec_close(me->codec_ctx);
+	// already freed by avformat_free_context?
+	//if(me->codec_ctx && avcodec_is_open(me->codec_ctx))
+	//	avcodec_close(me->codec_ctx);
 	
 	free(me);
 }
