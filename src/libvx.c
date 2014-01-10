@@ -11,6 +11,11 @@
 
 static bool initialized = false; 
 
+struct vx_frame_info {
+	vx_frame_flag flags;
+	long long pos;
+};
+
 struct vx_video {
 	AVFormatContext* fmt_ctx;
 	AVCodecContext* codec_ctx;
@@ -154,7 +159,7 @@ long long vx_get_file_size(vx_video* video)
 	return avio_size(video->fmt_ctx->pb);
 }
 
-vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, unsigned int* out_frame_flags, void* out_buffer)
+vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer, vx_frame_info* fi)
 {
 	AVPacket packet;
 	memset(&packet, 0, sizeof(packet));
@@ -163,6 +168,8 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, u
 	AVFrame* frame = avcodec_alloc_frame();
 
 	vx_error ret = VX_ERR_UNKNOWN;
+	int64_t frame_pos = -1;
+	int64_t file_pos = avio_tell(me->fmt_ctx->pb);
 
 	for(int i = 0; i < 1024; i++){
 		if(av_read_frame(me->fmt_ctx, &packet) < 0){
@@ -173,6 +180,9 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, u
 		if(packet.stream_index == me->stream){
 			int bytes_remaining = packet.size;
 			int bytes_decoded = 0;
+
+			if(frame_pos < 0 && packet.pos != -1)
+				frame_pos = packet.pos;
 
 			// Decode until all bytes in the packet are decoded
 			while(bytes_remaining > 0 && !frame_finished){
@@ -191,7 +201,11 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, u
 			break;
 	}
 
-	*out_frame_flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
+	if(fi){
+		fi->flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
+		fi->flags |= frame_pos < 0 ? VX_FF_BYTE_POS_GUESSED : 0;
+		fi->pos = frame_pos >= 0 ? frame_pos : file_pos;	
+	}
 	
 	AVPicture pict;
 	int av_pixfmt = pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
@@ -285,4 +299,24 @@ void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt pix_fmt)
 void vx_free_frame_buffer(void* buffer)
 {
 	av_free(buffer);
+}
+
+vx_frame_info* vx_fi_create()
+{
+	return calloc(1, sizeof(vx_frame_info));
+}
+
+void vx_fi_destroy(vx_frame_info* fi)
+{
+	free(fi);
+}
+
+unsigned int vx_fi_get_flags(vx_frame_info* fi)
+{
+	return fi->flags;
+}
+
+long long vx_fi_get_byte_pos(vx_frame_info* fi)
+{
+	return fi->pos;
 }

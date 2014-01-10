@@ -32,17 +32,19 @@ int main(int argc, char** argv)
 	SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(buffer, w, h, 8, w, 0xff, 0xff, 0xff, 0);
 
 	num_frames = 0;
-	unsigned int flags;
+	vx_frame_info* info = vx_fi_create();
 
-	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, &flags, buffer) == VX_ERR_SUCCESS ){
+	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, buffer, info) == VX_ERR_SUCCESS ){
 		SDL_BlitSurface(surface, NULL, screen, NULL);
 		SDL_Flip(screen);
 		
-		if(flags & VX_FF_KEYFRAME)
-			printf("%d is a keyframe\n", num_frames);
+		if(vx_fi_get_flags(info) & VX_FF_KEYFRAME)
+			printf("%d is a keyframe, byte pos: %llu%s\n", num_frames, vx_fi_get_byte_pos(info), vx_fi_get_flags(info) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "");
 		
 		num_frames++;
 	}
+
+	vx_fi_destroy(info);
 
 	printf("\n");
 	printf("num_frames: %d\n", num_frames);

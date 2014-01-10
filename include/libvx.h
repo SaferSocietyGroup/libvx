@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 typedef struct vx_video vx_video;
+typedef struct vx_frame_info vx_frame_info;
 
 typedef enum {
 	VX_PIX_FMT_RGB24 = 0,
@@ -30,6 +31,7 @@ typedef enum {
 
 typedef enum {
 	VX_FF_KEYFRAME = 1,
+	VX_FF_BYTE_POS_GUESSED = 2,
 } vx_frame_flag;
 
 vx_error vx_open(vx_video** video, const char* filename);
@@ -48,11 +50,17 @@ vx_error vx_get_pixel_aspect_ratio(vx_video* video, float* out_par);
 vx_error vx_get_frame_rate(vx_video* video, float* out_fps);
 vx_error vx_get_duration(vx_video* video, float* out_duration);
 
-vx_error vx_get_frame(vx_video* video, int width, int height, vx_pix_fmt pix_fmt, unsigned int* out_frame_flags, void* out_buffer);
+vx_error vx_get_frame(vx_video* video, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer, vx_frame_info* fi);
 const char* vx_get_error_str(vx_error error);
 
 void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt pix_fmt);
 void vx_free_frame_buffer(void* buffer);
+
+vx_frame_info* vx_fi_create();
+void vx_fi_destroy(vx_frame_info* fi);
+
+unsigned int vx_fi_get_flags(vx_frame_info* fi);
+long long vx_fi_get_byte_pos(vx_frame_info* fi);
 
 #ifdef __cplusplus
 }
