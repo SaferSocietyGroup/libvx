@@ -28,6 +28,10 @@ typedef enum {
 	VX_ERR_PIXEL_ASPECT    = 12,
 } vx_error;
 
+typedef enum {
+	VX_FF_KEYFRAME = 1,
+} vx_frame_flag;
+
 vx_error vx_open(vx_video** video, const char* filename);
 void vx_close(vx_video* video);
 
@@ -44,7 +48,7 @@ vx_error vx_get_pixel_aspect_ratio(vx_video* video, float* out_par);
 vx_error vx_get_frame_rate(vx_video* video, float* out_fps);
 vx_error vx_get_duration(vx_video* video, float* out_duration);
 
-vx_error vx_get_frame(vx_video* video, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer);
+vx_error vx_get_frame(vx_video* video, int width, int height, vx_pix_fmt pix_fmt, unsigned int* out_frame_flags, void* out_buffer);
 const char* vx_get_error_str(vx_error error);
 
 void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt pix_fmt);

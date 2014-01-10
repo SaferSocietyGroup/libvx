@@ -32,10 +32,15 @@ int main(int argc, char** argv)
 	SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(buffer, w, h, 8, w, 0xff, 0xff, 0xff, 0);
 
 	num_frames = 0;
+	unsigned int flags;
 
-	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, buffer) == VX_ERR_SUCCESS ){
+	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, &flags, buffer) == VX_ERR_SUCCESS ){
 		SDL_BlitSurface(surface, NULL, screen, NULL);
 		SDL_Flip(screen);
+		
+		if(flags & VX_FF_KEYFRAME)
+			printf("%d is a keyframe\n", num_frames);
+		
 		num_frames++;
 	}
 

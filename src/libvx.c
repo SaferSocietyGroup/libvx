@@ -154,7 +154,7 @@ long long vx_get_file_size(vx_video* video)
 	return avio_size(video->fmt_ctx->pb);
 }
 
-vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, void* buffer)
+vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, unsigned int* out_frame_flags, void* out_buffer)
 {
 	AVPacket packet;
 	memset(&packet, 0, sizeof(packet));
@@ -190,10 +190,12 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 		if(frame_finished)
 			break;
 	}
+
+	*out_frame_flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
 	
 	AVPicture pict;
 	int av_pixfmt = pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
-	if(avpicture_fill(&pict, buffer, av_pixfmt, width, height) < 0){
+	if(avpicture_fill(&pict, out_buffer, av_pixfmt, width, height) < 0){
 		ret = VX_ERR_SCALING;
 		goto cleanup;
 	}
