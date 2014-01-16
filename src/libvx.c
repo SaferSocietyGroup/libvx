@@ -206,6 +206,8 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 	if(fi){
 		fi->flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
 		fi->flags |= frame_pos < 0 ? VX_FF_BYTE_POS_GUESSED : 0;
+		fi->flags |= frame->pts > 0 ? VX_FF_HAS_PTS : 0; 
+
 		fi->pos = frame_pos >= 0 ? frame_pos : file_pos;	
 		fi->pts = frame->pts;
 		fi->dts = frame->pkt_dts;

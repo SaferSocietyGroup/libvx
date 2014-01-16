@@ -32,6 +32,7 @@ typedef enum {
 typedef enum {
 	VX_FF_KEYFRAME = 1,
 	VX_FF_BYTE_POS_GUESSED = 2,
+	VX_FF_HAS_PTS = 4
 } vx_frame_flag;
 
 vx_error vx_open(vx_video** video, const char* filename);
