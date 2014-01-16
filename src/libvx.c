@@ -14,6 +14,8 @@ static bool initialized = false;
 struct vx_frame_info {
 	vx_frame_flag flags;
 	long long pos;
+	long long dts;
+	long long pts;
 };
 
 struct vx_video {
@@ -205,6 +207,8 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 		fi->flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
 		fi->flags |= frame_pos < 0 ? VX_FF_BYTE_POS_GUESSED : 0;
 		fi->pos = frame_pos >= 0 ? frame_pos : file_pos;	
+		fi->pts = frame->pts;
+		fi->dts = frame->pkt_dts;
 	}
 	
 	AVPicture pict;
@@ -280,6 +284,11 @@ const char* vx_get_error_str(vx_error error)
 	return err_str[error];
 }
 
+double vx_timestamp_to_seconds(vx_video* me, long long ts)
+{
+	return (double)ts * av_q2d(me->fmt_ctx->streams[me->stream]->time_base);
+}
+
 vx_error vx_get_pixel_aspect_ratio(vx_video* me, float* out_par)
 {
 	AVRational par = me->codec_ctx->sample_aspect_ratio;
@@ -319,4 +328,14 @@ unsigned int vx_fi_get_flags(vx_frame_info* fi)
 long long vx_fi_get_byte_pos(vx_frame_info* fi)
 {
 	return fi->pos;
+}
+
+long long vx_fi_get_dts(vx_frame_info* fi)
+{
+	return fi->dts;
+}
+
+long long vx_fi_get_pts(vx_frame_info* fi)
+{
+	return fi->pts;
 }

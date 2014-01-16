@@ -38,8 +38,14 @@ int main(int argc, char** argv)
 		SDL_BlitSurface(surface, NULL, screen, NULL);
 		SDL_Flip(screen);
 		
-		if(vx_fi_get_flags(info) & VX_FF_KEYFRAME)
-			printf("%d is a keyframe, byte pos: %llu%s\n", num_frames, vx_fi_get_byte_pos(info), vx_fi_get_flags(info) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "");
+		if(vx_fi_get_flags(info) & VX_FF_KEYFRAME){
+			double dts = vx_timestamp_to_seconds(video, vx_fi_get_dts(info));
+			double pts = vx_fi_get_pts(info) > 0 ? vx_timestamp_to_seconds(video, vx_fi_get_pts(info)) : dts;
+
+			printf("%d is a keyframe, byte pos: %llu%s dts/pts (in secs): %f/%f\n", num_frames, 
+				vx_fi_get_byte_pos(info), vx_fi_get_flags(info) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "", 
+				dts, pts);
+		}
 		
 		num_frames++;
 	}

@@ -42,6 +42,7 @@ int vx_get_height(vx_video* video);
 
 long long vx_get_file_position(vx_video* video);
 long long vx_get_file_size(vx_video* video);
+double vx_timestamp_to_seconds(vx_video* video, long long ts);
 
 vx_error vx_count_frames_in_file(const char* filename, int* out_num_frames);
 
@@ -61,6 +62,8 @@ void vx_fi_destroy(vx_frame_info* fi);
 
 unsigned int vx_fi_get_flags(vx_frame_info* fi);
 long long vx_fi_get_byte_pos(vx_frame_info* fi);
+long long vx_fi_get_dts(vx_frame_info* fi);
+long long vx_fi_get_pts(vx_frame_info* fi);
 
 #ifdef __cplusplus
 }
