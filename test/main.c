@@ -40,11 +40,11 @@ int main(int argc, char** argv)
 		
 		if(vx_fi_get_flags(info) & VX_FF_KEYFRAME){
 			double dts = vx_timestamp_to_seconds(video, vx_fi_get_dts(info));
-			double pts = (vx_fi_get_flags(info) & VX_FF_HAS_PTS) ? vx_timestamp_to_seconds(video, vx_fi_get_pts(info)) : dts;
+			double pts = vx_timestamp_to_seconds(video, vx_fi_get_pts(info));
 
-			printf("%d is a keyframe, byte pos: %llu%s dts/pts (in secs): %f/%f\n", num_frames, 
+			printf("%d is a keyframe, byte pos: %llu%s dts/pts (in secs): %f/%f, has pts: %s\n", num_frames, 
 				vx_fi_get_byte_pos(info), vx_fi_get_flags(info) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "", 
-				dts, pts);
+				dts, pts, (vx_fi_get_flags(info) & VX_FF_HAS_PTS ? "true" : "false"));
 		}
 		
 		num_frames++;

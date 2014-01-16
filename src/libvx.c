@@ -209,7 +209,7 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 		fi->flags |= frame->pts > 0 ? VX_FF_HAS_PTS : 0; 
 
 		fi->pos = frame_pos >= 0 ? frame_pos : file_pos;	
-		fi->pts = frame->pts;
+		fi->pts = frame->pts > 0 ? frame->pts : frame->pkt_dts;
 		fi->dts = frame->pkt_dts;
 	}
 	
