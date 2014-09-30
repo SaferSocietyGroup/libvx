@@ -18,11 +18,39 @@ struct vx_frame_info {
 	long long pts;
 };
 
+typedef struct vx_frame_queue_item {
+	vx_frame_info info;
+	AVFrame* frame;
+} vx_frame_queue_item;
+
+#define FRAME_QUEUE_SIZE 60 
+
 struct vx_video {
 	AVFormatContext* fmt_ctx;
 	AVCodecContext* codec_ctx;
 	int stream;
+
+	int num_queue;
+	vx_frame_queue_item frame_queue[FRAME_QUEUE_SIZE + 1];
+
+	vx_error decoding_error;
 };
+
+static int vx_enqueue_qsort_fn(const void* a, const void* b)
+{
+	return ((vx_frame_queue_item*)a)->info.pts < ((vx_frame_queue_item*)b)->info.pts;
+}
+
+static void vx_enqueue(vx_video* me, vx_frame_queue_item item)
+{
+	me->frame_queue[me->num_queue++] = item;
+	qsort(me->frame_queue, me->num_queue, sizeof(vx_frame_queue_item), vx_enqueue_qsort_fn);
+}
+
+static vx_frame_queue_item vx_dequeue(vx_video* me)
+{
+	return me->frame_queue[--me->num_queue];
+}
 
 vx_error vx_open(vx_video** video, const char* filename)
 {
@@ -91,6 +119,11 @@ void vx_close(vx_video* me)
 	// already freed by avformat_free_context?
 	//if(me->codec_ctx && avcodec_is_open(me->codec_ctx))
 	//	avcodec_close(me->codec_ctx);
+
+	for(int i = 0; i < me->num_queue; i++){
+		av_frame_unref(me->frame_queue[i].frame);
+		av_free(me->frame_queue[i].frame);
+	}
 	
 	free(me);
 }
@@ -161,13 +194,13 @@ long long vx_get_file_size(vx_video* video)
 	return avio_size(video->fmt_ctx->pb);
 }
 
-vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer, vx_frame_info* fi)
+static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_frame)
 {
 	AVPacket packet;
 	memset(&packet, 0, sizeof(packet));
 
 	int frame_finished = 0;
-	AVFrame* frame = avcodec_alloc_frame();
+	AVFrame* frame = av_frame_alloc();
 
 	vx_error ret = VX_ERR_UNKNOWN;
 	int64_t frame_pos = -1;
@@ -209,10 +242,29 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 		fi->flags |= frame->pts > 0 ? VX_FF_HAS_PTS : 0; 
 
 		fi->pos = frame_pos >= 0 ? frame_pos : file_pos;	
-		fi->pts = frame->pts > 0 ? frame->pts : frame->pkt_dts;
+		//fi->pts = frame->pts > 0 ? frame->pts : frame->pkt_dts;
+		fi->pts = av_frame_get_best_effort_timestamp(frame);
 		fi->dts = frame->pkt_dts;
 	}
+
+	*out_frame = frame;
 	
+	return VX_ERR_SUCCESS;
+
+cleanup:
+	if(frame)
+		av_free(frame);
+
+	if(packet.data)
+		av_free_packet(&packet);
+
+	return ret;
+}
+
+static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer)
+{
+	vx_error ret = VX_ERR_UNKNOWN;
+
 	AVPicture pict;
 	int av_pixfmt = pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
 	if(avpicture_fill(&pict, out_buffer, av_pixfmt, width, height) < 0){
@@ -228,20 +280,71 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 		goto cleanup;
 	}
 
+	assert(frame->data);
+
 	sws_scale(sws_ctx, (const uint8_t* const*)frame->data, frame->linesize, 0, me->codec_ctx->height, pict.data, pict.linesize); 
 	sws_freeContext(sws_ctx);
 	
-	//av_free(frame->data[0]);
-	av_free(frame);
+	return VX_ERR_SUCCESS;
+
+cleanup:
+
+	return ret;
+}
+
+vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer, vx_frame_info* fi)
+{
+	vx_error ret = VX_ERR_UNKNOWN;
+	AVFrame* frame = NULL;
+
+	while(me->num_queue < FRAME_QUEUE_SIZE){
+		ret = vx_decode_frame(me, fi, &frame);
+
+		if(ret == VX_ERR_EOF || ret == VX_ERR_DECODE_VIDEO){
+			if(me->decoding_error == VX_ERR_SUCCESS)
+				me->decoding_error = ret;
+			break;
+		}
+
+		if(ret != VX_ERR_SUCCESS)
+			goto cleanup;
+
+		vx_frame_queue_item item;
+
+		item.info = *fi;
+		item.frame = frame;//vx_frame_clone(frame);
+		//av_free(frame);
+
+		vx_enqueue(me, item);
+	}
+
+	if(me->num_queue > 0){
+		vx_frame_queue_item item = vx_dequeue(me);
+
+		frame = item.frame;
+
+		if(fi)
+			*fi = item.info;
+
+		ret = vx_scale_frame(me, frame, width, height, pix_fmt, out_buffer);
+		if(ret != VX_ERR_SUCCESS)
+			goto cleanup;
+
+		av_frame_unref(frame);
+		av_free(frame);
+	}
+
+	else{
+		return me->decoding_error;
+	}
 
 	return VX_ERR_SUCCESS;
 
 cleanup:
-	if(frame)
+	if(frame){
+		av_frame_unref(frame);
 		av_free(frame);
-
-	if(packet.data)
-		av_free_packet(&packet);
+	}
 
 	return ret;
 }

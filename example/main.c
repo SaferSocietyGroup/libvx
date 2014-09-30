@@ -31,11 +31,14 @@ int main(int argc, char** argv)
 	printf("%d x %d @ %.2f fps, PAR: %.2f\n", w, h, fps, par);
 
 	int num = 0;
-	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, buffer) == VX_ERR_SUCCESS ){
+	vx_frame_info* fi = vx_fi_create();
+
+	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, buffer, fi) == VX_ERR_SUCCESS ){
 		printf("\rframe %d        ", ++num);
 	}
 	printf("\n");
 
+	vx_fi_destroy(fi);
 	vx_free_frame_buffer(buffer);
 	vx_close(video);
 
