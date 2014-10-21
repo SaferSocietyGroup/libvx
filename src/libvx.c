@@ -38,7 +38,7 @@ struct vx_video {
 
 static int vx_enqueue_qsort_fn(const void* a, const void* b)
 {
-	return ((vx_frame_queue_item*)a)->info.pts < ((vx_frame_queue_item*)b)->info.pts;
+	return ((vx_frame_queue_item*)a)->info.pts > ((vx_frame_queue_item*)b)->info.pts;
 }
 
 static void vx_enqueue(vx_video* me, vx_frame_queue_item item)
