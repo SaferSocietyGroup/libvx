@@ -23,7 +23,7 @@ typedef struct vx_frame_queue_item {
 	AVFrame* frame;
 } vx_frame_queue_item;
 
-#define FRAME_QUEUE_SIZE 60 
+#define FRAME_QUEUE_SIZE 16 
 
 struct vx_video {
 	AVFormatContext* fmt_ctx;
@@ -38,7 +38,7 @@ struct vx_video {
 
 static int vx_enqueue_qsort_fn(const void* a, const void* b)
 {
-	return ((vx_frame_queue_item*)a)->info.pts > ((vx_frame_queue_item*)b)->info.pts;
+	return ((vx_frame_queue_item*)a)->info.pts < ((vx_frame_queue_item*)b)->info.pts;
 }
 
 static void vx_enqueue(vx_video* me, vx_frame_queue_item item)
@@ -94,6 +94,7 @@ vx_error vx_open(vx_video** video, const char* filename)
 
 	// Get a pointer to the codec context for the video stream
 	me->codec_ctx = me->fmt_ctx->streams[me->stream]->codec;
+	me->codec_ctx->refcounted_frames = 1;
 	
 	// Open codec
 	if(avcodec_open2(me->codec_ctx, codec, NULL) < 0){
@@ -122,7 +123,7 @@ void vx_close(vx_video* me)
 
 	for(int i = 0; i < me->num_queue; i++){
 		av_frame_unref(me->frame_queue[i].frame);
-		av_free(me->frame_queue[i].frame);
+		av_frame_free(&me->frame_queue[i].frame);
 	}
 	
 	free(me);
@@ -235,7 +236,7 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 		if(frame_finished)
 			break;
 	}
-
+		
 	if(fi){
 		fi->flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
 		fi->flags |= frame_pos < 0 ? VX_FF_BYTE_POS_GUESSED : 0;
@@ -252,8 +253,10 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 	return VX_ERR_SUCCESS;
 
 cleanup:
-	if(frame)
-		av_free(frame);
+	if(frame){
+		av_frame_unref(frame);
+		av_frame_free(&frame);
+	}
 
 	if(packet.data)
 		av_free_packet(&packet);
@@ -297,7 +300,7 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 	vx_error ret = VX_ERR_UNKNOWN;
 	AVFrame* frame = NULL;
 
-	while(me->num_queue < FRAME_QUEUE_SIZE){
+	while(me->num_queue < FRAME_QUEUE_SIZE && me->decoding_error == VX_ERR_SUCCESS){
 		ret = vx_decode_frame(me, fi, &frame);
 
 		if(ret == VX_ERR_EOF || ret == VX_ERR_DECODE_VIDEO){
@@ -331,7 +334,7 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 			goto cleanup;
 
 		av_frame_unref(frame);
-		av_free(frame);
+		av_frame_free(&frame);
 	}
 
 	else{
@@ -343,7 +346,7 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 cleanup:
 	if(frame){
 		av_frame_unref(frame);
-		av_free(frame);
+		av_frame_free(&frame);
 	}
 
 	return ret;
