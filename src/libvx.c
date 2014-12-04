@@ -385,7 +385,7 @@ const char* vx_get_error_str(vx_error error)
 		"could not find codec",                  //VX_ERR_FIND_CODEC      = 7,
 		"could not open codec",                  //VX_ERR_OPEN_CODEC      = 8,
 		"end of file",                           //VX_ERR_EOF             = 9,
-		"error while decodin",                   //VX_ERR_DECODE_VIDEO    = 10,
+		"error while decoding",                  //VX_ERR_DECODE_VIDEO    = 10,
 		"error while scaling",                   //VX_ERR_SCALING         = 11,
 	};
 
