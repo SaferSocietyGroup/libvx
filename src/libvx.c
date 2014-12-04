@@ -206,13 +206,14 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 	vx_error ret = VX_ERR_UNKNOWN;
 	int64_t frame_pos = -1;
 	int64_t file_pos = avio_tell(me->fmt_ctx->pb);
+	int retries = 0;
 
 	for(int i = 0; i < 1024; i++){
 		if(av_read_frame(me->fmt_ctx, &packet) < 0){
 			ret = VX_ERR_EOF;
 			goto cleanup;
 		}
-		
+
 		if(packet.stream_index == me->stream){
 			int bytes_remaining = packet.size;
 			int bytes_decoded = 0;
@@ -223,8 +224,17 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 			// Decode until all bytes in the packet are decoded
 			while(bytes_remaining > 0 && !frame_finished){
 				if( (bytes_decoded = avcodec_decode_video2(me->codec_ctx, frame, &frame_finished, &packet)) < 0 ){
-					ret = VX_ERR_DECODE_VIDEO;
-					goto cleanup;
+					if(retries++ > 1000){
+						ret = VX_ERR_DECODE_VIDEO;
+						goto cleanup;
+					}
+
+					// every 10 retries, skip ahead a few bytes
+					if(retries != 0 && (retries % 10)){
+						int64_t fp = avio_tell(me->fmt_ctx->pb);
+						avformat_seek_file(me->fmt_ctx, me->stream, fp + 100, fp + 512, fp + 1024 * 1024, AVSEEK_FLAG_BYTE | AVSEEK_FLAG_ANY);
+						break;
+					}
 				}
 
 				bytes_remaining -= bytes_decoded;
