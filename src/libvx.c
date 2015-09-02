@@ -9,23 +9,41 @@
 
 #include "libvx.h"
 
+#ifdef DEBUG
+#	define dprintf printf
+#else
+# define dprintf(...)
+#endif
+
 static bool initialized = false; 
 
-struct vx_frame_info {
+typedef struct
+{
 	vx_frame_flag flags;
 	long long pos;
 	long long dts;
 	long long pts;
+} vx_frame_info;
+
+struct vx_frame
+{
+	vx_frame_info info;
+	int width, height;
+	vx_pix_fmt pix_fmt;
+
+	void* buffer;
 };
 
-typedef struct vx_frame_queue_item {
+typedef struct vx_frame_queue_item
+{
 	vx_frame_info info;
 	AVFrame* frame;
 } vx_frame_queue_item;
 
 #define FRAME_QUEUE_SIZE 16 
 
-struct vx_video {
+struct vx_video
+{
 	AVFormatContext* fmt_ctx;
 	AVCodecContext* codec_ctx;
 	int stream;
@@ -81,6 +99,7 @@ vx_error vx_open(vx_video** video, const char* filename)
 	// Find the best video stream
 	AVCodec* codec;
 	me->stream = av_find_best_stream(me->fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
+	dprintf("stream: %d\n", me->stream);
 
 	if(me->stream < 0){
 		if(me->stream == AVERROR_STREAM_NOT_FOUND)
@@ -101,7 +120,7 @@ vx_error vx_open(vx_video** video, const char* filename)
 		error = VX_ERR_OPEN_CODEC;
 		goto cleanup;
 	}
-
+	
 	*video = me;
 	return VX_ERR_SUCCESS;
 
@@ -129,6 +148,40 @@ void vx_close(vx_video* me)
 	free(me);
 }
 
+static bool vx_read_frame(AVFormatContext* fmt_ctx, AVPacket* packet, int stream)
+{
+	// try to read a frame, if it can't be read, skip ahead a bit and try again
+	int64_t last_fp = avio_tell(fmt_ctx->pb);
+
+	for(int i = 0; i < 1024; i++){
+		int ret = av_read_frame(fmt_ctx, packet);
+		
+		// success
+		if(ret == 0)
+			return true;
+
+		// eof, no need to retry
+		if(ret == AVERROR_EOF || avio_feof(fmt_ctx->pb))
+			return false;
+
+		// other error, might be a damaged stream, seek forward a couple bytes and try again
+		if((i % 10) == 0){
+			int64_t fp = avio_tell(fmt_ctx->pb);
+
+			if(fp <= last_fp)
+				fp = last_fp + 100 * i;
+
+			dprintf("retry: @%" PRId64 "\n", fp);
+			avformat_seek_file(fmt_ctx, stream, fp + 100, fp + 512, fp + 1024 * 1024, AVSEEK_FLAG_BYTE | AVSEEK_FLAG_ANY);
+
+			last_fp = fp;
+		}
+	}
+
+	return false;
+}
+
+
 static vx_error count_frames(vx_video* me, int* out_num_frames)
 {
 	assert(me);
@@ -139,7 +192,7 @@ static vx_error count_frames(vx_video* me, int* out_num_frames)
 	while(true){
 		memset(&packet, 0, sizeof(packet));
 
-		if(av_read_frame(me->fmt_ctx, &packet) < 0){
+		if(!vx_read_frame(me->fmt_ctx, &packet, me->stream)){
 			break;
 		}
 
@@ -208,8 +261,10 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 	int64_t file_pos = avio_tell(me->fmt_ctx->pb);
 	int retries = 0;
 
+	dprintf("@%"PRId64"\n", file_pos);
+
 	for(int i = 0; i < 1024; i++){
-		if(av_read_frame(me->fmt_ctx, &packet) < 0){
+		if(!vx_read_frame(me->fmt_ctx, &packet, me->stream)){
 			ret = VX_ERR_EOF;
 			goto cleanup;
 		}
@@ -247,16 +302,13 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 			break;
 	}
 		
-	if(fi){
-		fi->flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
-		fi->flags |= frame_pos < 0 ? VX_FF_BYTE_POS_GUESSED : 0;
-		fi->flags |= frame->pts > 0 ? VX_FF_HAS_PTS : 0; 
+	fi->flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
+	fi->flags |= frame_pos < 0 ? VX_FF_BYTE_POS_GUESSED : 0;
+	fi->flags |= frame->pts > 0 ? VX_FF_HAS_PTS : 0; 
 
-		fi->pos = frame_pos >= 0 ? frame_pos : file_pos;	
-		//fi->pts = frame->pts > 0 ? frame->pts : frame->pkt_dts;
-		fi->pts = av_frame_get_best_effort_timestamp(frame);
-		fi->dts = frame->pkt_dts;
-	}
+	fi->pos = frame_pos >= 0 ? frame_pos : file_pos;	
+	fi->pts = av_frame_get_best_effort_timestamp(frame);
+	fi->dts = frame->pkt_dts;
 
 	*out_frame = frame;
 	
@@ -274,19 +326,19 @@ cleanup:
 	return ret;
 }
 
-static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer)
+static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, vx_frame* vxframe)
 {
 	vx_error ret = VX_ERR_UNKNOWN;
 
 	AVPicture pict;
-	int av_pixfmt = pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
-	if(avpicture_fill(&pict, out_buffer, av_pixfmt, width, height) < 0){
+	int av_pixfmt = vxframe->pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
+	if(avpicture_fill(&pict, vxframe->buffer, av_pixfmt, vxframe->width, vxframe->height) < 0){
 		ret = VX_ERR_SCALING;
 		goto cleanup;
 	}
 
 	struct SwsContext* sws_ctx = sws_getContext(me->codec_ctx->width, me->codec_ctx->height, 
-		me->codec_ctx->pix_fmt, width, height, av_pixfmt, SWS_BILINEAR, NULL, NULL, NULL);
+		me->codec_ctx->pix_fmt, vxframe->width, vxframe->height, av_pixfmt, SWS_BILINEAR, NULL, NULL, NULL);
 
 	if(!sws_ctx){
 		ret = VX_ERR_SCALING;
@@ -305,13 +357,14 @@ cleanup:
 	return ret;
 }
 
-vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer, vx_frame_info* fi)
+vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
 {
 	vx_error ret = VX_ERR_UNKNOWN;
 	AVFrame* frame = NULL;
 
 	while(me->num_queue < FRAME_QUEUE_SIZE && me->decoding_error == VX_ERR_SUCCESS){
-		ret = vx_decode_frame(me, fi, &frame);
+		vx_frame_info fi;
+		ret = vx_decode_frame(me, &fi, &frame);
 
 		if(ret == VX_ERR_EOF || ret == VX_ERR_DECODE_VIDEO){
 			if(me->decoding_error == VX_ERR_SUCCESS)
@@ -324,9 +377,8 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 
 		vx_frame_queue_item item;
 
-		item.info = *fi;
-		item.frame = frame;//vx_frame_clone(frame);
-		//av_free(frame);
+		item.info = fi;
+		item.frame = frame;
 
 		vx_enqueue(me, item);
 	}
@@ -335,11 +387,9 @@ vx_error vx_get_frame(vx_video* me, int width, int height, vx_pix_fmt pix_fmt, v
 		vx_frame_queue_item item = vx_dequeue(me);
 
 		frame = item.frame;
+		vxframe->info = item.info;
 
-		if(fi)
-			*fi = item.info;
-
-		ret = vx_scale_frame(me, frame, width, height, pix_fmt, out_buffer);
+		ret = vx_scale_frame(me, frame, vxframe);
 		if(ret != VX_ERR_SUCCESS)
 			goto cleanup;
 
@@ -417,43 +467,65 @@ vx_error vx_get_pixel_aspect_ratio(vx_video* me, float* out_par)
 	return VX_ERR_SUCCESS;
 }
 
-void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt pix_fmt)
+vx_frame* vx_frame_create(int width, int height, vx_pix_fmt pix_fmt)
 {
+	vx_frame* me = calloc(1, sizeof(vx_frame));
+
+	if(!me)
+		goto error;
+	
+	me->width = width;
+	me->height = height;
+	me->pix_fmt = pix_fmt;
+
 	int av_pixfmt = pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
-	return av_malloc(avpicture_get_size(av_pixfmt, width, height));
+	int size = avpicture_get_size(av_pixfmt, width, height);
+
+	if(size <= 0)
+		goto error;
+
+	dprintf("size: %d\n", size);
+	me->buffer = av_malloc(size);
+
+	if(!me->buffer)
+		goto error;
+
+	return me;
+
+error:
+	if(me)
+		free(me);
+	
+	return NULL;
 }
 
-void vx_free_frame_buffer(void* buffer)
+void vx_frame_destroy(vx_frame* me)
 {
-	av_free(buffer);
+	av_free(me->buffer);
+	free(me);
 }
 
-vx_frame_info* vx_fi_create()
+unsigned int vx_frame_get_flags(vx_frame* me)
 {
-	return calloc(1, sizeof(vx_frame_info));
+	return me->info.flags;
 }
 
-void vx_fi_destroy(vx_frame_info* fi)
+long long vx_frame_get_byte_pos(vx_frame* me)
 {
-	free(fi);
+	return me->info.pos;
 }
 
-unsigned int vx_fi_get_flags(vx_frame_info* fi)
+long long vx_frame_get_dts(vx_frame* me)
 {
-	return fi->flags;
+	return me->info.dts;
 }
 
-long long vx_fi_get_byte_pos(vx_frame_info* fi)
+long long vx_frame_get_pts(vx_frame* me)
 {
-	return fi->pos;
+	return me->info.pts;
 }
 
-long long vx_fi_get_dts(vx_frame_info* fi)
+void* vx_frame_get_buffer(vx_frame* frame)
 {
-	return fi->dts;
-}
-
-long long vx_fi_get_pts(vx_frame_info* fi)
-{
-	return fi->pts;
+	return frame->buffer;
 }

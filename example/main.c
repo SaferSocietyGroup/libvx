@@ -16,8 +16,8 @@ int main(int argc, char** argv)
 
 	int w = vx_get_width(video), h = vx_get_height(video);
 
-	char* buffer = vx_alloc_frame_buffer(w, h, VX_PIX_FMT_GRAY8);
-	LASSERT(buffer, "could not allocate frame buffer");
+	vx_frame* frame = vx_frame_create(w, h, VX_PIX_FMT_GRAY8);
+	LASSERT(frame, "could not allocate frame buffer");
 
 	float fps = 30.0f;
 	if(vx_get_frame_rate(video, &fps) != VX_ERR_SUCCESS)
@@ -31,15 +31,13 @@ int main(int argc, char** argv)
 	printf("%d x %d @ %.2f fps, PAR: %.2f\n", w, h, fps, par);
 
 	int num = 0;
-	vx_frame_info* fi = vx_fi_create();
 
-	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, buffer, fi) == VX_ERR_SUCCESS ){
+	while( vx_get_frame(video, frame) == VX_ERR_SUCCESS ){
 		printf("\rframe %d        ", ++num);
 	}
 	printf("\n");
 
-	vx_fi_destroy(fi);
-	vx_free_frame_buffer(buffer);
+	vx_frame_destroy(frame);
 	vx_close(video);
 
 	return 0;

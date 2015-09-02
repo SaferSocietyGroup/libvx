@@ -24,39 +24,38 @@ int main(int argc, char** argv)
 	int w = vx_get_width(video);
 	int h = vx_get_height(video);
 
-	char* buffer = vx_alloc_frame_buffer(w, h, VX_PIX_FMT_GRAY8);
-	LASSERT(buffer, "could not allocate frame buffer");
+	printf("video size: %d x %d\n", w, h);
+	
+	vx_frame* frame = vx_frame_create(w, h, VX_PIX_FMT_GRAY8);
+	LASSERT(frame, "could not allocate frame");
 
 	SDL_Init(SDL_INIT_EVERYTHING);
 	SDL_Surface* screen = SDL_SetVideoMode(w, h, 0, 0);
-	SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(buffer, w, h, 8, w, 0xff, 0xff, 0xff, 0);
+	SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(vx_frame_get_buffer(frame), w, h, 8, w, 0xff, 0xff, 0xff, 0);
 
 	num_frames = 0;
-	vx_frame_info* info = vx_fi_create();
-
-	while( vx_get_frame(video, w, h, VX_PIX_FMT_GRAY8, buffer, info) == VX_ERR_SUCCESS ){
+	while( vx_get_frame(video, frame) == VX_ERR_SUCCESS ){
 		SDL_BlitSurface(surface, NULL, screen, NULL);
 		SDL_Flip(screen);
 		
-		if(vx_fi_get_flags(info) & VX_FF_KEYFRAME){
-			double dts = vx_timestamp_to_seconds(video, vx_fi_get_dts(info));
-			double pts = vx_timestamp_to_seconds(video, vx_fi_get_pts(info));
+		if(vx_frame_get_flags(frame) & VX_FF_KEYFRAME){
+			double dts = vx_timestamp_to_seconds(video, vx_frame_get_dts(frame));
+			double pts = vx_timestamp_to_seconds(video, vx_frame_get_pts(frame));
 
 			printf("%d is a keyframe, byte pos: %llu%s dts/pts (in secs): %f/%f, has pts: %s\n", num_frames, 
-				vx_fi_get_byte_pos(info), vx_fi_get_flags(info) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "", 
-				dts, pts, (vx_fi_get_flags(info) & VX_FF_HAS_PTS ? "true" : "false"));
+				vx_frame_get_byte_pos(frame), vx_frame_get_flags(frame) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "", 
+				dts, pts, (vx_frame_get_flags(frame) & VX_FF_HAS_PTS ? "true" : "false"));
 		}
 		
 		num_frames++;
 	}
 
-	vx_fi_destroy(info);
+	vx_frame_destroy(frame);
 
 	printf("\n");
 	printf("num_frames: %d\n", num_frames);
 
 	vx_close(video);
-	vx_free_frame_buffer(buffer);
 
 	return 0;
 }

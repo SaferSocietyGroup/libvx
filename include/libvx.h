@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 typedef struct vx_video vx_video;
-typedef struct vx_frame_info vx_frame_info;
+typedef struct vx_frame vx_frame;
 
 typedef enum {
 	VX_PIX_FMT_RGB24 = 0,
@@ -52,19 +52,17 @@ vx_error vx_get_pixel_aspect_ratio(vx_video* video, float* out_par);
 vx_error vx_get_frame_rate(vx_video* video, float* out_fps);
 vx_error vx_get_duration(vx_video* video, float* out_duration);
 
-vx_error vx_get_frame(vx_video* video, int width, int height, vx_pix_fmt pix_fmt, void* out_buffer, vx_frame_info* fi);
+vx_error vx_get_frame(vx_video* video, vx_frame* frame);
 const char* vx_get_error_str(vx_error error);
 
-void* vx_alloc_frame_buffer(int width, int height, vx_pix_fmt pix_fmt);
-void vx_free_frame_buffer(void* buffer);
+vx_frame* vx_frame_create(int width, int height, vx_pix_fmt pix_fmt);
+void vx_frame_destroy(vx_frame* frame);
 
-vx_frame_info* vx_fi_create();
-void vx_fi_destroy(vx_frame_info* fi);
-
-unsigned int vx_fi_get_flags(vx_frame_info* fi);
-long long vx_fi_get_byte_pos(vx_frame_info* fi);
-long long vx_fi_get_dts(vx_frame_info* fi);
-long long vx_fi_get_pts(vx_frame_info* fi);
+unsigned int vx_frame_get_flags(vx_frame* frame);
+long long vx_frame_get_byte_pos(vx_frame* frame);
+long long vx_frame_get_dts(vx_frame* frame);
+long long vx_frame_get_pts(vx_frame* frame);
+void* vx_frame_get_buffer(vx_frame* frame);
 
 #ifdef __cplusplus
 }
