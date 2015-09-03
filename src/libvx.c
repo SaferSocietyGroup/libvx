@@ -6,11 +6,12 @@
 #include <libavutil/mathematics.h>
 #include <libswscale/swscale.h>
 #include <libavformat/avformat.h>
+#include <libswresample/swresample.h>
 
 #include "libvx.h"
 
 #ifdef DEBUG
-#	define dprintf printf
+#	define dprintf(...) { printf("%s:%d %-30s ", __FILE__, __LINE__, __func__); printf(__VA_ARGS__); }
 #else
 # define dprintf(...)
 #endif
@@ -45,8 +46,20 @@ typedef struct vx_frame_queue_item
 struct vx_video
 {
 	AVFormatContext* fmt_ctx;
-	AVCodecContext* codec_ctx;
-	int stream;
+	AVCodecContext* video_codec_ctx;
+	AVCodecContext* audio_codec_ctx;
+	SwrContext* swr_ctx;
+
+	int video_stream;
+	int audio_stream;
+
+	int sample_rate;
+	int channels;
+	vx_sample_fmt sample_format;
+	vx_audio_callback audio_cb;
+	void* audio_user_data;
+	uint8_t** audio_buffer;
+	int audio_line_size;
 
 	int num_queue;
 	vx_frame_queue_item frame_queue[FRAME_QUEUE_SIZE + 1];
@@ -68,6 +81,34 @@ static void vx_enqueue(vx_video* me, vx_frame_queue_item item)
 static vx_frame_queue_item vx_dequeue(vx_video* me)
 {
 	return me->frame_queue[--me->num_queue];
+}
+
+static bool find_stream_and_open_codec(vx_video* me, enum AVMediaType type, int* out_stream, AVCodecContext** out_codec_ctx, vx_error* out_error)
+{
+	AVCodec* codec;
+	*out_stream = av_find_best_stream(me->fmt_ctx, type, -1, -1, &codec, 0);
+
+	if(*out_stream < 0){
+		if(*out_stream == AVERROR_STREAM_NOT_FOUND)
+			*out_error = VX_ERR_VIDEO_STREAM;
+
+		if(*out_stream == AVERROR_DECODER_NOT_FOUND)
+			*out_error = VX_ERR_FIND_CODEC;
+
+		return false;
+	}
+
+	// Get a pointer to the codec context for the video stream
+	*out_codec_ctx = me->fmt_ctx->streams[*out_stream]->codec;
+	
+	// Open codec
+	if(avcodec_open2(*out_codec_ctx, codec, NULL) < 0){
+		*out_error = VX_ERR_OPEN_CODEC;
+
+		return false;
+	}
+
+	return true;
 }
 
 vx_error vx_open(vx_video** video, const char* filename)
@@ -96,30 +137,17 @@ vx_error vx_open(vx_video** video, const char* filename)
 		goto cleanup;
 	}
 	
-	// Find the best video stream
-	AVCodec* codec;
-	me->stream = av_find_best_stream(me->fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
-	dprintf("stream: %d\n", me->stream);
-
-	if(me->stream < 0){
-		if(me->stream == AVERROR_STREAM_NOT_FOUND)
-			error = VX_ERR_VIDEO_STREAM;
-
-		if(me->stream == AVERROR_DECODER_NOT_FOUND)
-			error = VX_ERR_FIND_CODEC;
-
+	// find video and audio streams and open respective codecs
+	if(!find_stream_and_open_codec(me, AVMEDIA_TYPE_VIDEO, &me->video_stream, &me->video_codec_ctx, &error)){
 		goto cleanup;
 	}
-
-	// Get a pointer to the codec context for the video stream
-	me->codec_ctx = me->fmt_ctx->streams[me->stream]->codec;
-	me->codec_ctx->refcounted_frames = 1;
+		
+	if(!find_stream_and_open_codec(me, AVMEDIA_TYPE_AUDIO, &me->audio_stream, &me->audio_codec_ctx, &error)){
+		dprintf("no audio stream\n");
+	}
 	
-	// Open codec
-	if(avcodec_open2(me->codec_ctx, codec, NULL) < 0){
-		error = VX_ERR_OPEN_CODEC;
-		goto cleanup;
-	}
+	// reference counted frames for video codec so they can be queued without cloning
+	me->video_codec_ctx->refcounted_frames = 1;
 	
 	*video = me;
 	return VX_ERR_SUCCESS;
@@ -133,12 +161,15 @@ void vx_close(vx_video* me)
 {
 	assert(me);
 
+	if(me->swr_ctx)
+		swr_free(&me->swr_ctx);
+
 	if(me->fmt_ctx)
 		avformat_free_context(me->fmt_ctx);
 
 	// already freed by avformat_free_context?
-	//if(me->codec_ctx && avcodec_is_open(me->codec_ctx))
-	//	avcodec_close(me->codec_ctx);
+	//if(me->video_codec_ctx && avcodec_is_open(me->video_codec_ctx))
+	//	avcodec_close(me->video_codec_ctx);
 
 	for(int i = 0; i < me->num_queue; i++){
 		av_frame_unref(me->frame_queue[i].frame);
@@ -155,7 +186,7 @@ static bool vx_read_frame(AVFormatContext* fmt_ctx, AVPacket* packet, int stream
 
 	for(int i = 0; i < 1024; i++){
 		int ret = av_read_frame(fmt_ctx, packet);
-		
+
 		// success
 		if(ret == 0)
 			return true;
@@ -192,11 +223,11 @@ static vx_error count_frames(vx_video* me, int* out_num_frames)
 	while(true){
 		memset(&packet, 0, sizeof(packet));
 
-		if(!vx_read_frame(me->fmt_ctx, &packet, me->stream)){
+		if(!vx_read_frame(me->fmt_ctx, &packet, me->video_stream)){
 			break;
 		}
 
-		if(packet.stream_index == me->stream){
+		if(packet.stream_index == me->video_stream){
 			num_frames++;
 		}
 
@@ -230,12 +261,12 @@ vx_error vx_count_frames_in_file(const char* filename, int* out_num_frames)
 
 int vx_get_width(vx_video* me)
 {
-	return me->codec_ctx->width;
+	return me->video_codec_ctx->width;
 }
 
 int vx_get_height(vx_video* me)
 {
-	return me->codec_ctx->height;
+	return me->video_codec_ctx->height;
 }
 
 long long vx_get_file_position(vx_video* video)
@@ -248,7 +279,36 @@ long long vx_get_file_size(vx_video* video)
 	return avio_size(video->fmt_ctx->pb);
 }
 
-static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_frame)
+int vx_get_audio_sample_rate(vx_video* me)
+{
+	if(!me->audio_codec_ctx)
+		return 0;
+	
+	return me->audio_codec_ctx->sample_rate;
+}
+
+int vx_get_audio_present(vx_video* me)
+{
+	return me->audio_codec_ctx ? 1 : 0;
+}
+
+int vx_get_audio_channels(vx_video* me)
+{
+	if(!me->audio_codec_ctx)
+		return 0;
+
+	return me->audio_codec_ctx->channels;
+}
+
+const char* vx_get_audio_sample_format_str(vx_video* me)
+{
+	if(!me->audio_codec_ctx)
+		return NULL;
+
+	return av_get_sample_fmt_name(me->audio_codec_ctx->sample_fmt);
+}
+
+static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_frame, int* out_stream_idx)
 {
 	AVPacket packet;
 	memset(&packet, 0, sizeof(packet));
@@ -261,15 +321,15 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 	int64_t file_pos = avio_tell(me->fmt_ctx->pb);
 	int retries = 0;
 
-	dprintf("@%"PRId64"\n", file_pos);
-
 	for(int i = 0; i < 1024; i++){
-		if(!vx_read_frame(me->fmt_ctx, &packet, me->stream)){
+		if(!vx_read_frame(me->fmt_ctx, &packet, me->video_stream)){
 			ret = VX_ERR_EOF;
 			goto cleanup;
 		}
 
-		if(packet.stream_index == me->stream){
+		*out_stream_idx = packet.stream_index;
+
+		if(packet.stream_index == me->video_stream || packet.stream_index == me->audio_stream){
 			int bytes_remaining = packet.size;
 			int bytes_decoded = 0;
 
@@ -278,18 +338,29 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 
 			// Decode until all bytes in the packet are decoded
 			while(bytes_remaining > 0 && !frame_finished){
-				if( (bytes_decoded = avcodec_decode_video2(me->codec_ctx, frame, &frame_finished, &packet)) < 0 ){
+				if(packet.stream_index == me->video_stream){
+					bytes_decoded = avcodec_decode_video2(me->video_codec_ctx, frame, &frame_finished, &packet);
+				}else{
+					bytes_decoded = avcodec_decode_audio4(me->audio_codec_ctx, frame, &frame_finished, &packet);
+				}
+
+				char eb[2048];
+
+				if(bytes_decoded < 0){
+					av_strerror(bytes_decoded, eb, sizeof(eb));
+
 					if(retries++ > 1000){
 						ret = VX_ERR_DECODE_VIDEO;
 						goto cleanup;
 					}
 
 					// every 10 retries, skip ahead a few bytes
-					if(retries != 0 && (retries % 10)){
+					if((retries % 10) == 0){
 						int64_t fp = avio_tell(me->fmt_ctx->pb);
-						avformat_seek_file(me->fmt_ctx, me->stream, fp + 100, fp + 512, fp + 1024 * 1024, AVSEEK_FLAG_BYTE | AVSEEK_FLAG_ANY);
-						break;
+						avformat_seek_file(me->fmt_ctx, me->video_stream, fp + 100, fp + 512, fp + 1024 * 1024, AVSEEK_FLAG_BYTE | AVSEEK_FLAG_ANY);
 					}
+
+					break;
 				}
 
 				bytes_remaining -= bytes_decoded;
@@ -337,8 +408,8 @@ static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, vx_frame* vxframe)
 		goto cleanup;
 	}
 
-	struct SwsContext* sws_ctx = sws_getContext(me->codec_ctx->width, me->codec_ctx->height, 
-		me->codec_ctx->pix_fmt, vxframe->width, vxframe->height, av_pixfmt, SWS_BILINEAR, NULL, NULL, NULL);
+	struct SwsContext* sws_ctx = sws_getContext(me->video_codec_ctx->width, me->video_codec_ctx->height, 
+		me->video_codec_ctx->pix_fmt, vxframe->width, vxframe->height, av_pixfmt, SWS_BILINEAR, NULL, NULL, NULL);
 
 	if(!sws_ctx){
 		ret = VX_ERR_SCALING;
@@ -347,7 +418,7 @@ static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, vx_frame* vxframe)
 
 	assert(frame->data);
 
-	sws_scale(sws_ctx, (const uint8_t* const*)frame->data, frame->linesize, 0, me->codec_ctx->height, pict.data, pict.linesize); 
+	sws_scale(sws_ctx, (const uint8_t* const*)frame->data, frame->linesize, 0, me->video_codec_ctx->height, pict.data, pict.linesize); 
 	sws_freeContext(sws_ctx);
 	
 	return VX_ERR_SUCCESS;
@@ -364,7 +435,8 @@ vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
 
 	while(me->num_queue < FRAME_QUEUE_SIZE && me->decoding_error == VX_ERR_SUCCESS){
 		vx_frame_info fi;
-		ret = vx_decode_frame(me, &fi, &frame);
+		int stream_idx = -1;
+		ret = vx_decode_frame(me, &fi, &frame, &stream_idx);
 
 		if(ret == VX_ERR_EOF || ret == VX_ERR_DECODE_VIDEO){
 			if(me->decoding_error == VX_ERR_SUCCESS)
@@ -374,13 +446,36 @@ vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
 
 		if(ret != VX_ERR_SUCCESS)
 			goto cleanup;
+		
+		if(stream_idx == me->video_stream){
+			// video frame
 
-		vx_frame_queue_item item;
+			vx_frame_queue_item item;
 
-		item.info = fi;
-		item.frame = frame;
+			item.info = fi;
+			item.frame = frame;
 
-		vx_enqueue(me, item);
+			vx_enqueue(me, item);
+		}
+
+		else if(stream_idx == me->audio_stream && me->audio_cb){
+			// audio frame (and audio is enabled)
+
+			int64_t pts = av_frame_get_best_effort_timestamp(frame);
+			double ts = pts * av_q2d(me->fmt_ctx->streams[me->audio_stream]->time_base);
+
+			AVCodecContext* actx = me->audio_codec_ctx;
+			int dst_sample_count = av_rescale_rnd(frame->nb_samples, me->sample_rate, actx->sample_rate, AV_ROUND_UP);
+
+			int swrret = swr_convert(me->swr_ctx, me->audio_buffer, dst_sample_count, (const uint8_t**)frame->data, frame->nb_samples);
+
+			if(swrret < 0){
+				ret = VX_ERR_RESAMPLE_AUDIO;
+				goto cleanup;
+			}
+
+			me->audio_cb(me->audio_buffer[0], dst_sample_count, ts, me->audio_user_data);
+		}
 	}
 
 	if(me->num_queue > 0){
@@ -414,7 +509,7 @@ cleanup:
 
 vx_error vx_get_frame_rate(vx_video* me, float* out_fps)
 {
-	AVRational rate = me->fmt_ctx->streams[me->stream]->avg_frame_rate;
+	AVRational rate = me->fmt_ctx->streams[me->video_stream]->avg_frame_rate;
 
 	if(rate.num == 0 || rate.den == 0)
 		return VX_ERR_FRAME_RATE;  
@@ -445,8 +540,12 @@ const char* vx_get_error_str(vx_error error)
 		"could not find codec",                  //VX_ERR_FIND_CODEC      = 7,
 		"could not open codec",                  //VX_ERR_OPEN_CODEC      = 8,
 		"end of file",                           //VX_ERR_EOF             = 9,
-		"error while decoding",                  //VX_ERR_DECODE_VIDEO    = 10,
+		"error while decoding video",            //VX_ERR_DECODE_VIDEO    = 10,
 		"error while scaling",                   //VX_ERR_SCALING         = 11,
+		"could not get pixel aspect ratio",      //VX_ERR_PIXEL_ASPECT    = 12,
+		"error while decoding audio",            //VX_ERR_DECODE_AUDIO    = 13,
+		"no audio available",                    //VX_ERR_NO_AUDIO        = 14,
+	  "error while resampling audio",          //VX_ERR_RESAMPLE_AUDIO  = 15,
 	};
 
 	return err_str[error];
@@ -454,12 +553,12 @@ const char* vx_get_error_str(vx_error error)
 
 double vx_timestamp_to_seconds(vx_video* me, long long ts)
 {
-	return (double)ts * av_q2d(me->fmt_ctx->streams[me->stream]->time_base);
+	return (double)ts * av_q2d(me->fmt_ctx->streams[me->video_stream]->time_base);
 }
 
 vx_error vx_get_pixel_aspect_ratio(vx_video* me, float* out_par)
 {
-	AVRational par = me->codec_ctx->sample_aspect_ratio;
+	AVRational par = me->video_codec_ctx->sample_aspect_ratio;
 	if(par.num == 0 && par.den == 1)
 		return VX_ERR_PIXEL_ASPECT;
 
@@ -484,7 +583,6 @@ vx_frame* vx_frame_create(int width, int height, vx_pix_fmt pix_fmt)
 	if(size <= 0)
 		goto error;
 
-	dprintf("size: %d\n", size);
 	me->buffer = av_malloc(size);
 
 	if(!me->buffer)
@@ -528,4 +626,64 @@ long long vx_frame_get_pts(vx_frame* me)
 void* vx_frame_get_buffer(vx_frame* frame)
 {
 	return frame->buffer;
+}
+
+vx_error vx_set_audio_params(vx_video* me, int sample_rate, int channels, vx_sample_fmt format, vx_audio_callback cb, void* user_data)
+{
+	vx_error err = VX_ERR_UNKNOWN;
+
+	if(me->audio_stream < 0)
+		return VX_ERR_NO_AUDIO;
+
+	AVCodecContext* ctx = me->audio_codec_ctx;
+
+	me->audio_cb = cb;
+	me->channels = channels;
+	me->sample_rate = sample_rate;
+	me->sample_format = format;
+	me->audio_user_data = user_data;
+
+	if(me->swr_ctx)
+		swr_free(&me->swr_ctx);
+	
+	if(me->audio_buffer){
+		av_freep(&me->audio_buffer[0]);
+		av_freep(&me->audio_buffer);
+	}
+			
+	enum AVSampleFormat avfmt = format == VX_SAMPLE_FMT_FLT ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
+
+	int64_t src_channel_layout = ctx->channel_layout != 0 ? ctx->channel_layout :
+		av_get_default_channel_layout(ctx->channels);
+
+	me->swr_ctx = swr_alloc_set_opts(NULL, av_get_default_channel_layout(channels),
+			avfmt, me->sample_rate, src_channel_layout, ctx->sample_fmt, ctx->sample_rate, 0, NULL);
+	
+	if(!me->swr_ctx){
+		err = VX_ERR_ALLOCATE;
+		goto cleanup;
+	}
+
+	swr_init(me->swr_ctx);
+
+	int ret = av_samples_alloc_array_and_samples(&me->audio_buffer, &me->audio_line_size, channels, sample_rate * 4, avfmt, 0);
+
+	if(ret < 0){
+		err = VX_ERR_ALLOCATE;
+		goto cleanup;
+	}
+	
+	return VX_ERR_SUCCESS;
+
+cleanup:
+
+	if(me->swr_ctx)
+		swr_free(&me->swr_ctx);
+
+	if(me->audio_buffer){
+		av_freep(&me->audio_buffer[0]);
+		av_freep(&me->audio_buffer);
+	}
+	
+	return err;
 }

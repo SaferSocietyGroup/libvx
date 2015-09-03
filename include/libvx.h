@@ -14,6 +14,11 @@ typedef enum {
 } vx_pix_fmt;
 
 typedef enum {
+	VX_SAMPLE_FMT_S16 = 0,
+	VX_SAMPLE_FMT_FLT = 1
+} vx_sample_fmt;
+
+typedef enum {
 	VX_ERR_SUCCESS         = 0,
 	VX_ERR_UNKNOWN         = 1,
 	VX_ERR_ALLOCATE        = 2,
@@ -27,6 +32,9 @@ typedef enum {
 	VX_ERR_DECODE_VIDEO    = 10,
 	VX_ERR_SCALING         = 11,
 	VX_ERR_PIXEL_ASPECT    = 12,
+	VX_ERR_DECODE_AUDIO    = 13,
+	VX_ERR_NO_AUDIO        = 14,
+	VX_ERR_RESAMPLE_AUDIO  = 15,
 } vx_error;
 
 typedef enum {
@@ -35,11 +43,20 @@ typedef enum {
 	VX_FF_HAS_PTS = 4
 } vx_frame_flag;
 
+typedef void (*vx_audio_callback)(const void* samples, int num_samples, double ts, void* user_data);
+
 vx_error vx_open(vx_video** video, const char* filename);
 void vx_close(vx_video* video);
 
 int vx_get_width(vx_video* video);
 int vx_get_height(vx_video* video);
+
+int vx_get_audio_present(vx_video* video);
+int vx_get_audio_sample_rate(vx_video* video);
+int vx_get_audio_channels(vx_video* video);
+const char* vx_get_audio_sample_format_str(vx_video* video);
+
+vx_error vx_set_audio_params(vx_video* me, int sample_rate, int channels, vx_sample_fmt format, vx_audio_callback cb, void* user_data);
 
 long long vx_get_file_position(vx_video* video);
 long long vx_get_file_size(vx_video* video);
