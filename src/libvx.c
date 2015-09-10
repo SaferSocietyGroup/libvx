@@ -474,7 +474,7 @@ vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
 				goto cleanup;
 			}
 
-			me->audio_cb(me->audio_buffer[0], dst_sample_count, ts, me->audio_user_data);
+			me->audio_cb(me->audio_buffer[0], swrret, ts, me->audio_user_data);
 		}
 	}
 

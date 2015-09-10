@@ -2,13 +2,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <SDL.h>
+#include <stdbool.h>
 
 #define LASSERT(_v, ...) if(!(_v)){ printf(__VA_ARGS__); puts(""); exit(1); };
 
 void audio_callback(const void* samples, int num_samples, double ts, void* user_data)
 {
 	FILE* f = (FILE*)user_data;
-	fwrite(samples, sizeof(float) * 2, num_samples, f);
+	fwrite(samples, sizeof(int16_t) * 2 * num_samples, 1, f);
 }
 
 int main(int argc, char** argv)
@@ -50,14 +51,23 @@ int main(int argc, char** argv)
 
 		printf("audio format: %d channels @ %d Hz %s\n", channels, sample_rate, fmt);
 
-		faud = fopen("audio-float.raw", "w");
-		ret = vx_set_audio_params(video, 48000, 2, VX_SAMPLE_FMT_FLT, audio_callback, (void*)faud);
+		faud = fopen("audio-s16.raw", "w");
+		ret = vx_set_audio_params(video, 48000, 2, VX_SAMPLE_FMT_S16, audio_callback, (void*)faud);
 
 		LASSERT(ret == VX_ERR_SUCCESS, "could not set audio parameters");
 	}
 
 	num_frames = 0;
-	while( (ret = vx_get_frame(video, frame)) == VX_ERR_SUCCESS ){
+	bool done = false;
+
+	while( !done && (ret = vx_get_frame(video, frame)) == VX_ERR_SUCCESS ){
+		SDL_Event event;
+		
+		while(SDL_PollEvent(&event)){
+			if(event.type == SDL_QUIT)
+				done = false;
+		}
+
 		SDL_BlitSurface(surface, NULL, screen, NULL);
 		SDL_Flip(screen);
 		
@@ -65,8 +75,8 @@ int main(int argc, char** argv)
 			double dts = vx_timestamp_to_seconds(video, vx_frame_get_dts(frame));
 			double pts = vx_timestamp_to_seconds(video, vx_frame_get_pts(frame));
 
-			printf("%d is a keyframe, byte pos: %llu%s dts/pts (in secs): %f/%f, has pts: %s\n", num_frames, 
-				vx_frame_get_byte_pos(frame), vx_frame_get_flags(frame) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "", 
+			printf("%d is a keyframe, byte pos: %"PRIu64"%s dts/pts (in secs): %f/%f, has pts: %s\n", num_frames, 
+				(uint64_t)vx_frame_get_byte_pos(frame), vx_frame_get_flags(frame) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "", 
 				dts, pts, (vx_frame_get_flags(frame) & VX_FF_HAS_PTS ? "true" : "false"));
 		}
 		
