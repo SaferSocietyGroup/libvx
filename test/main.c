@@ -9,7 +9,7 @@
 void audio_callback(const void* samples, int num_samples, double ts, void* user_data)
 {
 	FILE* f = (FILE*)user_data;
-	fwrite(samples, sizeof(int16_t) * 2 * num_samples, 1, f);
+	fwrite(samples, sizeof(float) * 2 * num_samples, 1, f);
 }
 
 int main(int argc, char** argv)
@@ -51,8 +51,8 @@ int main(int argc, char** argv)
 
 		printf("audio format: %d channels @ %d Hz %s\n", channels, sample_rate, fmt);
 
-		faud = fopen("audio-s16.raw", "w");
-		ret = vx_set_audio_params(video, 48000, 2, VX_SAMPLE_FMT_S16, audio_callback, (void*)faud);
+		faud = fopen("audio-float.raw", "wb");
+		ret = vx_set_audio_params(video, 48000, 2, VX_SAMPLE_FMT_FLT, audio_callback, (void*)faud);
 
 		LASSERT(ret == VX_ERR_SUCCESS, "could not set audio parameters");
 	}
