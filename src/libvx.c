@@ -53,11 +53,18 @@ struct vx_video
 	int video_stream;
 	int audio_stream;
 
-	int sample_rate;
-	int channels;
-	vx_sample_fmt sample_format;
+	int out_sample_rate;
+	int out_channels;
+	vx_sample_fmt out_sample_format;
+
 	vx_audio_callback audio_cb;
 	void* audio_user_data;
+
+	int swr_channels;
+	int swr_sample_rate;
+	int64_t swr_channel_layout;
+	int swr_sample_format;
+
 	uint8_t** audio_buffer;
 	int audio_line_size;
 
@@ -465,7 +472,20 @@ vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
 			double ts = pts * av_q2d(me->fmt_ctx->streams[me->audio_stream]->time_base);
 
 			AVCodecContext* actx = me->audio_codec_ctx;
-			int dst_sample_count = av_rescale_rnd(frame->nb_samples, me->sample_rate, actx->sample_rate, AV_ROUND_UP);
+			int dst_sample_count = av_rescale_rnd(frame->nb_samples, me->out_sample_rate, actx->sample_rate, AV_ROUND_UP);
+
+			if(me->swr_channels != me->audio_codec_ctx->channels || me->swr_channel_layout != me->audio_codec_ctx->channel_layout
+				|| me->swr_sample_rate != me->audio_codec_ctx->sample_rate || me->swr_sample_format != me->audio_codec_ctx->sample_fmt)
+			{
+				dprintf("audio format changed\n");
+				dprintf("channels:       %d -> %d\n", me->swr_channels, me->audio_codec_ctx->channels);
+				dprintf("channel layout: %08lx -> %08lx\n", me->swr_channel_layout, me->audio_codec_ctx->channel_layout);
+				dprintf("sample rate:    %d -> %d\n", me->swr_sample_rate, me->audio_codec_ctx->sample_rate);
+				dprintf("sample format:  %d -> %d\n", me->swr_sample_format, me->audio_codec_ctx->sample_fmt);
+
+				// reinitialize swr_ctx if the audio codec magically changed parameters
+				vx_set_audio_params(me, me->out_sample_rate, me->out_channels, me->out_sample_format, me->audio_cb, me->audio_user_data);
+			}
 
 			int swrret = swr_convert(me->swr_ctx, me->audio_buffer, dst_sample_count, (const uint8_t**)frame->data, frame->nb_samples);
 
@@ -635,12 +655,10 @@ vx_error vx_set_audio_params(vx_video* me, int sample_rate, int channels, vx_sam
 	if(me->audio_stream < 0)
 		return VX_ERR_NO_AUDIO;
 
-	AVCodecContext* ctx = me->audio_codec_ctx;
-
 	me->audio_cb = cb;
-	me->channels = channels;
-	me->sample_rate = sample_rate;
-	me->sample_format = format;
+	me->out_channels = channels;
+	me->out_sample_rate = sample_rate;
+	me->out_sample_format = format;
 	me->audio_user_data = user_data;
 
 	if(me->swr_ctx)
@@ -651,13 +669,20 @@ vx_error vx_set_audio_params(vx_video* me, int sample_rate, int channels, vx_sam
 		av_freep(&me->audio_buffer);
 	}
 			
+	AVCodecContext* ctx = me->audio_codec_ctx;
+
 	enum AVSampleFormat avfmt = format == VX_SAMPLE_FMT_FLT ? AV_SAMPLE_FMT_FLT : AV_SAMPLE_FMT_S16;
 
 	int64_t src_channel_layout = ctx->channel_layout != 0 ? ctx->channel_layout :
 		av_get_default_channel_layout(ctx->channels);
 
 	me->swr_ctx = swr_alloc_set_opts(NULL, av_get_default_channel_layout(channels),
-			avfmt, me->sample_rate, src_channel_layout, ctx->sample_fmt, ctx->sample_rate, 0, NULL);
+			avfmt, me->out_sample_rate, src_channel_layout, ctx->sample_fmt, ctx->sample_rate, 0, NULL);
+
+	me->swr_channels = ctx->channels;
+	me->swr_channel_layout = ctx->channel_layout;
+	me->swr_sample_rate = ctx->sample_rate;
+	me->swr_sample_format = ctx->sample_fmt;
 	
 	if(!me->swr_ctx){
 		err = VX_ERR_ALLOCATE;

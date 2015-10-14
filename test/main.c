@@ -8,8 +8,9 @@
 
 void audio_callback(const void* samples, int num_samples, double ts, void* user_data)
 {
-	FILE* f = (FILE*)user_data;
-	fwrite(samples, sizeof(float) * 2 * num_samples, 1, f);
+	//FILE* f = (FILE*)user_data;
+	//fwrite(samples, sizeof(float) * 2 * num_samples, 1, f);
+	printf("audio samples with timestamp: %f\n", ts);
 }
 
 int main(int argc, char** argv)
