@@ -11,6 +11,7 @@ typedef struct vx_frame vx_frame;
 typedef enum {
 	VX_PIX_FMT_RGB24 = 0,
 	VX_PIX_FMT_GRAY8 = 1,
+	VX_PIX_FMT_RGB32 = 2,
 } vx_pix_fmt;
 
 typedef enum {

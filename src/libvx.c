@@ -4,6 +4,7 @@
 
 #include <libavcodec/avcodec.h>
 #include <libavutil/mathematics.h>
+#include <libavutil/pixfmt.h>
 #include <libswscale/swscale.h>
 #include <libavformat/avformat.h>
 #include <libswresample/swresample.h>
@@ -73,6 +74,12 @@ struct vx_video
 
 	vx_error decoding_error;
 };
+
+static enum AVPixelFormat vx_to_av_pix_fmt(vx_pix_fmt fmt)
+{
+	enum AVPixelFormat formats[] = {AV_PIX_FMT_GRAY8, AV_PIX_FMT_RGB24, AV_PIX_FMT_RGB32};
+	return formats[fmt];
+}
 
 static int vx_enqueue_qsort_fn(const void* a, const void* b)
 {
@@ -409,7 +416,7 @@ static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, vx_frame* vxframe)
 	vx_error ret = VX_ERR_UNKNOWN;
 
 	AVPicture pict;
-	int av_pixfmt = vxframe->pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
+	int av_pixfmt = vx_to_av_pix_fmt(vxframe->pix_fmt);
 	if(avpicture_fill(&pict, vxframe->buffer, av_pixfmt, vxframe->width, vxframe->height) < 0){
 		ret = VX_ERR_SCALING;
 		goto cleanup;
@@ -597,7 +604,7 @@ vx_frame* vx_frame_create(int width, int height, vx_pix_fmt pix_fmt)
 	me->height = height;
 	me->pix_fmt = pix_fmt;
 
-	int av_pixfmt = pix_fmt == VX_PIX_FMT_GRAY8 ? PIX_FMT_GRAY8 : PIX_FMT_RGB24;
+	int av_pixfmt = vx_to_av_pix_fmt(pix_fmt);
 	int size = avpicture_get_size(av_pixfmt, width, height);
 
 	if(size <= 0)

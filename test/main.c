@@ -34,12 +34,12 @@ int main(int argc, char** argv)
 
 	printf("video size: %d x %d\n", w, h);
 
-	vx_frame* frame = vx_frame_create(w, h, VX_PIX_FMT_GRAY8);
+	vx_frame* frame = vx_frame_create(w, h, VX_PIX_FMT_RGB32);
 	LASSERT(frame, "could not allocate frame");
 
 	SDL_Init(SDL_INIT_EVERYTHING);
 	SDL_Surface* screen = SDL_SetVideoMode(w, h, 0, 0);
-	SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(vx_frame_get_buffer(frame), w, h, 8, w, 0xff, 0xff, 0xff, 0);
+	SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(vx_frame_get_buffer(frame), w, h, 32, w * 4, 0xff0000, 0xff00, 0xff, 0);
 	
 	FILE* faud = NULL;
 	int audio_present = vx_get_audio_present(video);
