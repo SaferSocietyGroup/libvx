@@ -80,6 +80,14 @@ int main(int argc, char** argv)
 				(uint64_t)vx_frame_get_byte_pos(frame), vx_frame_get_flags(frame) & VX_FF_BYTE_POS_GUESSED ? " (guessed)" : "", 
 				dts, pts, (vx_frame_get_flags(frame) & VX_FF_HAS_PTS ? "true" : "false"));
 		}
+
+#if 0
+		if(num_frames == 100){
+			FILE* f = fopen("image.data", "wb");
+			fwrite(vx_frame_get_buffer(frame), w * 4 * h, 1, f);
+			fclose(f);
+		}
+#endif
 		
 		num_frames++;
 	}
