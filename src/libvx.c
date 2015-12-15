@@ -83,7 +83,7 @@ static enum AVPixelFormat vx_to_av_pix_fmt(vx_pix_fmt fmt)
 
 static int vx_enqueue_qsort_fn(const void* a, const void* b)
 {
-	return ((vx_frame_queue_item*)a)->info.pts < ((vx_frame_queue_item*)b)->info.pts;
+	return ((vx_frame_queue_item*)b)->info.pts - ((vx_frame_queue_item*)a)->info.pts;
 }
 
 static void vx_enqueue(vx_video* me, vx_frame_queue_item item)
@@ -486,7 +486,7 @@ vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
 			{
 				dprintf("audio format changed\n");
 				dprintf("channels:       %d -> %d\n", me->swr_channels, me->audio_codec_ctx->channels);
-				dprintf("channel layout: %08lx -> %08lx\n", me->swr_channel_layout, me->audio_codec_ctx->channel_layout);
+				dprintf("channel layout: %08"PRIx64" -> %08"PRIx64"\n", me->swr_channel_layout, me->audio_codec_ctx->channel_layout);
 				dprintf("sample rate:    %d -> %d\n", me->swr_sample_rate, me->audio_codec_ctx->sample_rate);
 				dprintf("sample format:  %d -> %d\n", me->swr_sample_format, me->audio_codec_ctx->sample_fmt);
 
