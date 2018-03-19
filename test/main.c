@@ -6,14 +6,16 @@
 
 #define LASSERT(_v, ...) if(!(_v)){ printf(__VA_ARGS__); puts(""); exit(1); };
 
-static double lastAudioTs = .0;
+static double last_audio_ts = .0;
+static int nsamples = 0;
 
 void audio_callback(const void* samples, int num_samples, double ts, void* user_data)
 {
 	//FILE* f = (FILE*)user_data;
 	//fwrite(samples, sizeof(float) * 2 * num_samples, 1, f);
-	//printf("audio samples with timestamp: %f, delta: %f\n", ts, ts - lastAudioTs);
-	lastAudioTs = ts;
+	//printf("audio samples with timestamp: %f, delta: %f\n", ts, ts - last_audio_ts);
+	last_audio_ts = ts;
+	nsamples += num_samples;
 }
 
 #define TGA_HEADER_SIZE 18
@@ -102,28 +104,41 @@ int main(int argc, char** argv)
 		ret = vx_set_audio_params(video, 48000, 2, VX_SAMPLE_FMT_FLT, audio_callback, (void*)faud);
 
 		LASSERT(ret == VX_ERR_SUCCESS, "could not set audio parameters");
+		
+		ret = vx_set_max_samples_per_frame(video, 48000*100);
+		LASSERT(ret == VX_ERR_SUCCESS, "could not set audio parameters");
 	}
 
 	num_frames = 0;
 	bool done = false;
 	double lastTs = .0;
 
-	while( !done && (ret = vx_get_frame(video, frame)) == VX_ERR_SUCCESS ){
+	while( !done && (ret = vx_get_frame(video, frame)) <= VX_ERR_SUCCESS){
 		SDL_Event event;
 		
 		while(SDL_PollEvent(&event)){
 			if(event.type == SDL_QUIT)
-				done = false;
+				done = true;
+
+			if(event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+				done = true;
 		}
 
 		SDL_BlitSurface(surface, NULL, screen, NULL);
 		SDL_Flip(screen);
 			
+		if(ret == VX_ERR_FRAME_DEFERRED)
+		{
+			printf("video frame deferred, audio samples: %d\n", nsamples);
+			nsamples = 0;
+			continue;
+		}
+		
 		double dts = vx_timestamp_to_seconds(video, vx_frame_get_dts(frame));
 		double pts = vx_timestamp_to_seconds(video, vx_frame_get_pts(frame));
 		long long ts = vx_frame_get_pts(frame);
 
-		printf("frame with ts: %f (%"PRId64"), delta: %f\n", pts, ts, pts - lastTs);
+		printf("frame with ts: %f (%"PRId64"), delta: %f\n", pts, (int64_t)ts, pts - lastTs);
 		lastTs = pts;
 		
 		if(vx_frame_get_flags(frame) & VX_FF_KEYFRAME){
@@ -151,7 +166,7 @@ int main(int argc, char** argv)
 		
 		num_frames++;
 	}
-
+	
 	printf("stopped because: %s\n", vx_get_error_str(ret));
 
 	vx_frame_destroy(frame);

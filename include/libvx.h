@@ -20,6 +20,7 @@ typedef enum {
 } vx_sample_fmt;
 
 typedef enum {
+	VX_ERR_FRAME_DEFERRED  = -1,
 	VX_ERR_SUCCESS         = 0,
 	VX_ERR_UNKNOWN         = 1,
 	VX_ERR_ALLOCATE        = 2,
@@ -58,6 +59,7 @@ int vx_get_audio_channels(vx_video* video);
 const char* vx_get_audio_sample_format_str(vx_video* video);
 
 vx_error vx_set_audio_params(vx_video* me, int sample_rate, int channels, vx_sample_fmt format, vx_audio_callback cb, void* user_data);
+vx_error vx_set_max_samples_per_frame(vx_video* me, int max_samples);
 
 long long vx_get_file_position(vx_video* video);
 long long vx_get_file_size(vx_video* video);

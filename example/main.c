@@ -10,6 +10,10 @@ int main(int argc, char** argv)
 
 	vx_error ret;
 	vx_video* video;
+	int frame_count = 0;
+
+	ret = vx_count_frames_in_file(argv[1], &frame_count);
+	printf("frame count: %d\n", frame_count);
 
 	ret = vx_open(&video, argv[1]);
 	LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]);	
@@ -32,7 +36,13 @@ int main(int argc, char** argv)
 
 	int num = 0;
 
-	while( vx_get_frame(video, frame) == VX_ERR_SUCCESS ){
+	while(1){
+		vx_error e = vx_get_frame(video, frame);
+		printf("%s (%d)\n", vx_get_error_str(e), e);
+
+		if(e != VX_ERR_SUCCESS)
+			break;
+
 		printf("\rframe %d        ", ++num);
 	}
 	printf("\n");

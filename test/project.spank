@@ -1,4 +1,14 @@
+[common]
 name        test
 sourcedir   ../src .
 cflags      ggdb std=c99 Wall I../include DDEBUG
-lib-static libavdevice libavformat libavcodec libavfilter libswscale libavutil sdl
+
+[*linux: common]
+lib                 libavdevice libavformat libavcodec libavfilter libswscale libavutil sdl 
+ldflags_extra       lX11 lXrandr lXi lXxf86vm lGL lva lva-drm lva-x11 lvdpau
+
+[mingw32: common]
+target_platform     mingw32
+lib-static          libavdevice libavformat libavcodec libavfilter libswscale libavutil sdl 
+ldflags             static static-libgcc
+ldflags             Wl,-Bstatic

@@ -68,6 +68,8 @@ struct vx_video
 
 	uint8_t** audio_buffer;
 	int audio_line_size;
+	int max_samples;
+	int samples_since_last_frame;
 
 	int num_queue;
 	vx_frame_queue_item frame_queue[FRAME_QUEUE_SIZE + 1];
@@ -77,7 +79,7 @@ struct vx_video
 
 static enum AVPixelFormat vx_to_av_pix_fmt(vx_pix_fmt fmt)
 {
-	enum AVPixelFormat formats[] = {AV_PIX_FMT_GRAY8, AV_PIX_FMT_RGB24, AV_PIX_FMT_BGRA};
+	enum AVPixelFormat formats[] = {AV_PIX_FMT_RGB24, AV_PIX_FMT_GRAY8, AV_PIX_FMT_BGRA};
 	return formats[fmt];
 }
 
@@ -155,7 +157,7 @@ vx_error vx_open(vx_video** video, const char* filename)
 	if(!find_stream_and_open_codec(me, AVMEDIA_TYPE_VIDEO, &me->video_stream, &me->video_codec_ctx, &error)){
 		goto cleanup;
 	}
-		
+
 	if(!find_stream_and_open_codec(me, AVMEDIA_TYPE_AUDIO, &me->audio_stream, &me->audio_codec_ctx, &error)){
 		dprintf("no audio stream\n");
 	}
@@ -396,7 +398,7 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 	fi->dts = frame->pkt_dts;
 
 	*out_frame = frame;
-	
+
 	return VX_ERR_SUCCESS;
 
 cleanup:
@@ -502,6 +504,16 @@ vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
 			}
 
 			me->audio_cb(me->audio_buffer[0], swrret, ts, me->audio_user_data);
+			me->samples_since_last_frame += swrret;
+
+			// defer video frame until later if we've reached max samples (if set)
+			// to allow the application to do additional audio processing 
+			if(me->max_samples > 0 && me->samples_since_last_frame >= me->max_samples)
+			{
+				ret = VX_ERR_FRAME_DEFERRED;
+				me->samples_since_last_frame = 0;
+				goto cleanup;
+			}
 		}
 	}
 
@@ -557,6 +569,7 @@ const char* vx_get_error_str(vx_error error)
 		error = VX_ERR_UNKNOWN;
 
 	const char* err_str[] = {
+		"video frame deferred",                  //VX_ERR_FRAME_DEFERRED  = -1,
 		"operation successful",                  //VX_ERR_SUCCESS         = 0,
 		"unknown error",                         //VX_ERR_UNKNOWN         = 1,
 		"memory allocation failed",              //VX_ERR_ALLOCATE        = 2,
@@ -575,7 +588,7 @@ const char* vx_get_error_str(vx_error error)
 	  "error while resampling audio",          //VX_ERR_RESAMPLE_AUDIO  = 15,
 	};
 
-	return err_str[error];
+	return err_str[error + 1];
 }
 
 double vx_timestamp_to_seconds(vx_video* me, long long ts)
@@ -611,6 +624,7 @@ vx_frame* vx_frame_create(int width, int height, vx_pix_fmt pix_fmt)
 		goto error;
 
 	me->buffer = av_malloc(size);
+	memset(me->buffer, 0, size);
 
 	if(!me->buffer)
 		goto error;
@@ -653,6 +667,12 @@ long long vx_frame_get_pts(vx_frame* me)
 void* vx_frame_get_buffer(vx_frame* frame)
 {
 	return frame->buffer;
+}
+
+vx_error vx_set_max_samples_per_frame(vx_video* me, int max_samples)
+{
+	me->max_samples = max_samples;
+	return VX_ERR_SUCCESS;
 }
 
 vx_error vx_set_audio_params(vx_video* me, int sample_rate, int channels, vx_sample_fmt format, vx_audio_callback cb, void* user_data)
