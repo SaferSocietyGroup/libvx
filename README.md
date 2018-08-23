@@ -10,7 +10,7 @@ See LICENSE (GPLv3)
 
 Authors
 -------
- * Fredrik Hultin <noname@nurd.se>, NetClean AB
+ * Fredrik Hultin <noname@nurd.se>, SaferSociety Group
 
 Dependencies
 ------------

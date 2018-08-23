@@ -60,6 +60,11 @@ int save_tga_mem(vx_frame* frame, int w, int h, char** out_buffer)
 	return w * h * 3 + TGA_HEADER_SIZE;
 }
 
+void count_frames_callback(int stream, void* data)
+{
+	printf("frame in stream: %d\n", stream);
+}
+
 
 int main(int argc, char** argv)
 {
@@ -68,7 +73,7 @@ int main(int argc, char** argv)
 	int num_frames;
 	vx_error ret;
 	 
-	ret = vx_count_frames_in_file(argv[1], &num_frames);
+	ret = vx_count_frames_in_file_with_cb(argv[1], &num_frames, count_frames_callback, NULL);
 	LASSERT(ret == VX_ERR_SUCCESS, "could not count frames in video file: %s", argv[1]);	
 	printf("num_frames: %d\n", num_frames);
 
@@ -101,17 +106,18 @@ int main(int argc, char** argv)
 		printf("audio format: %d channels @ %d Hz %s\n", channels, sample_rate, fmt);
 
 		faud = fopen("audio-float.raw", "wb");
-		ret = vx_set_audio_params(video, 48000, 2, VX_SAMPLE_FMT_FLT, audio_callback, (void*)faud);
+		ret = vx_set_audio_params(video, 44100, 2, VX_SAMPLE_FMT_FLT, audio_callback, (void*)faud);
 
 		LASSERT(ret == VX_ERR_SUCCESS, "could not set audio parameters");
 		
-		ret = vx_set_max_samples_per_frame(video, 48000*100);
+		ret = vx_set_max_samples_per_frame(video, 336896);
 		LASSERT(ret == VX_ERR_SUCCESS, "could not set audio parameters");
 	}
 
 	num_frames = 0;
 	bool done = false;
 	double lastTs = .0;
+	int64_t lel_frames = 0;
 
 	while( !done && (ret = vx_get_frame(video, frame)) <= VX_ERR_SUCCESS){
 		SDL_Event event;
@@ -129,6 +135,7 @@ int main(int argc, char** argv)
 			
 		if(ret == VX_ERR_FRAME_DEFERRED)
 		{
+			lel_frames++;
 			printf("video frame deferred, audio samples: %d\n", nsamples);
 			nsamples = 0;
 			continue;
@@ -168,6 +175,7 @@ int main(int argc, char** argv)
 	}
 	
 	printf("stopped because: %s\n", vx_get_error_str(ret));
+	printf("lelframes: %"PRId64"\n", lel_frames);
 
 	vx_frame_destroy(frame);
 
