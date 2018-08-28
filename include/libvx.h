@@ -66,8 +66,10 @@ long long vx_get_file_position(vx_video* video);
 long long vx_get_file_size(vx_video* video);
 double vx_timestamp_to_seconds(vx_video* video, long long ts);
 
-vx_error vx_count_frames_in_file(const char* filename, int* out_num_frames);
-vx_error vx_count_frames_in_file_with_cb(const char* filename, int* out_num_frames, vx_on_count_frames_callback cb, void* user_data);
+// Note that you need to re-open the file (create a new vx_video instance) after counting frames.
+// cb can be NULL.
+vx_error vx_count_frames(vx_video* me, int* out_num_frames);
+vx_error vx_set_count_frames_cb(vx_video* me, vx_on_count_frames_callback cb, void* user_data);
 
 vx_error vx_get_pixel_aspect_ratio(vx_video* video, float* out_par);
 

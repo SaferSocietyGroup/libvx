@@ -65,7 +65,6 @@ void count_frames_callback(int stream, void* data)
 	printf("frame in stream: %d\n", stream);
 }
 
-
 int main(int argc, char** argv)
 {
 	LASSERT(argc == 2, "usage: %s [videofile]", argv[0]);
@@ -73,11 +72,18 @@ int main(int argc, char** argv)
 	int num_frames;
 	vx_error ret;
 	 
-	ret = vx_count_frames_in_file_with_cb(argv[1], &num_frames, count_frames_callback, NULL);
-	LASSERT(ret == VX_ERR_SUCCESS, "could not count frames in video file: %s", argv[1]);	
-	printf("num_frames: %d\n", num_frames);
-
 	vx_video* video = NULL;
+
+	ret = vx_open(&video, argv[1]);
+	LASSERT(ret == VX_ERR_SUCCESS, "could not open file for frame counting: %s", argv[1]);	
+
+	vx_set_count_frames_cb(video, count_frames_callback, NULL);
+	
+	ret = vx_count_frames(video, &num_frames);
+	LASSERT(ret == VX_ERR_SUCCESS, "error counting frames");	
+	vx_close(video);
+	
+	printf("num_frames: %d\n", num_frames);
 
 	ret = vx_open(&video, argv[1]);
 	LASSERT(ret == VX_ERR_SUCCESS, "could not open video file: %s", argv[1]);	

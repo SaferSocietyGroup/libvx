@@ -74,6 +74,9 @@ struct vx_video
 	int num_queue;
 	vx_frame_queue_item frame_queue[FRAME_QUEUE_SIZE + 1];
 
+	vx_on_count_frames_callback count_frames_cb;
+	void* count_frames_user_data;
+
 	vx_error decoding_error;
 };
 
@@ -228,11 +231,20 @@ static bool vx_read_frame(AVFormatContext* fmt_ctx, AVPacket* packet, int stream
 	return false;
 }
 
-
-static vx_error count_frames(vx_video* me, int* out_num_frames, 
-	vx_on_count_frames_callback cb, void* user_data)
+vx_error vx_set_count_frames_cb(vx_video* me, vx_on_count_frames_callback cb, void* user_data)
 {
 	assert(me);
+
+	me->count_frames_cb = cb;
+	me->count_frames_user_data = user_data;
+
+	return VX_ERR_SUCCESS;
+}
+
+vx_error vx_count_frames(vx_video* me, int* out_num_frames)
+{
+	assert(me);
+
 	int num_frames = 0;
 
 	AVPacket packet;
@@ -248,8 +260,8 @@ static vx_error count_frames(vx_video* me, int* out_num_frames,
 			num_frames++;
 		}
 			
-		if(cb){
-			cb(packet.stream_index, user_data);
+		if(me->count_frames_cb){
+			me->count_frames_cb(packet.stream_index, me->count_frames_user_data);
 		}
 
 		av_free_packet(&packet);
@@ -263,28 +275,6 @@ static vx_error count_frames(vx_video* me, int* out_num_frames,
 	return VX_ERR_SUCCESS;
 }
 
-
-vx_error vx_count_frames_in_file_with_cb(const char* filename, 
-	int* out_num_frames, vx_on_count_frames_callback cb, void* user_data)
-{
-	vx_video* video = NULL;
-	vx_error ret;
-
-	ret = vx_open(&video, filename);
-	if(ret != VX_ERR_SUCCESS)
-		return ret;
-
-	ret = count_frames(video, out_num_frames, cb, user_data);
-
-	vx_close(video);
-
-	return ret;
-}
-
-vx_error vx_count_frames_in_file(const char* filename, int* out_num_frames)
-{
-	return vx_count_frames_in_file_with_cb(filename, out_num_frames, NULL, NULL);
-}
 
 int vx_get_width(vx_video* me)
 {

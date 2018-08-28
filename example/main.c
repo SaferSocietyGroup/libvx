@@ -12,8 +12,13 @@ int main(int argc, char** argv)
 	vx_video* video;
 	int frame_count = 0;
 
-	ret = vx_count_frames_in_file(argv[1], &frame_count);
+	ret = vx_open(&video, argv[1]);
+	LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]);	
+
+	ret = vx_count_frames(video, &frame_count);
 	printf("frame count: %d\n", frame_count);
+
+	vx_close(video);
 
 	ret = vx_open(&video, argv[1]);
 	LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]);	
