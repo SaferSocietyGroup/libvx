@@ -5,11 +5,17 @@ cflags      ggdb std=c99 Wall I../include DDEBUG
 
 [*linux: common]
 lib                 libavdevice libavformat libavcodec libavfilter libswscale libavutil sdl 
-ldflags             static
-ldflags_extra       lX11 lXrandr lXi lXxf86vm lGL lva lva-drm lva-x11 lvdpau
+#ldflags             static
+#ldflags_extra       lX11 lXrandr lXi lXxf86vm lGL lva lva-drm lva-x11 lvdpau
 
 [mingw32: common]
 target_platform     mingw32
 lib-static          libavdevice libavformat libavcodec libavfilter libswscale libavutil sdl 
 ldflags             static static-libgcc
-ldflags             Wl,-Bstatic
+ldflags             mconsole Wl,-Bstatic
+
+[mingw64: common]
+target_platform     mingw64
+lib-static          libavdevice libavformat libavcodec libavfilter libswscale libavutil sdl 
+ldflags             static static-libgcc
+ldflags             mconsole Wl,-Bstatic

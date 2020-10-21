@@ -18,6 +18,7 @@
 #endif
 
 static bool initialized = false; 
+static int retry_count = 100;
 
 typedef struct
 {
@@ -50,6 +51,8 @@ struct vx_video
 	AVCodecContext* video_codec_ctx;
 	AVCodecContext* audio_codec_ctx;
 	SwrContext* swr_ctx;
+	enum AVPixelFormat hw_pix_fmt;
+	AVBufferRef *hw_device_ctx;
 
 	int video_stream;
 	int audio_stream;
@@ -102,12 +105,66 @@ static vx_frame_queue_item vx_dequeue(vx_video* me)
 	return me->frame_queue[--me->num_queue];
 }
 
-static bool find_stream_and_open_codec(vx_video* me, enum AVMediaType type, int* out_stream, AVCodecContext** out_codec_ctx, vx_error* out_error)
+static const AVCodecHWConfig* get_hw_config(AVCodec* codec)
+{
+	enum AVHWDeviceType type_priority[] = {
+			AV_HWDEVICE_TYPE_D3D11VA,
+			AV_HWDEVICE_TYPE_VDPAU,
+			AV_HWDEVICE_TYPE_CUDA,
+			AV_HWDEVICE_TYPE_VAAPI,
+			AV_HWDEVICE_TYPE_DXVA2,
+			AV_HWDEVICE_TYPE_QSV,
+			AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
+			AV_HWDEVICE_TYPE_DRM,
+			AV_HWDEVICE_TYPE_OPENCL,
+			AV_HWDEVICE_TYPE_MEDIACODEC,
+			AV_HWDEVICE_TYPE_VULKAN
+	};
+
+	for(int j = 0; j < sizeof(type_priority) / sizeof(enum AVHWDeviceType); j++)
+	{
+		enum AVHWDeviceType target_type = type_priority[j];
+
+		for(int i = 0;; i++)
+		{
+			const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i++);
+
+			if(config != NULL && config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX && 
+				config->device_type == target_type) 
+			{
+				dprintf("found hardware config: %s\n", av_hwdevice_get_type_name(config->device_type));
+				return config;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+static int hw_decoder_init(vx_video* me, AVCodecContext *ctx, const enum AVHWDeviceType type)
+{
+	int err = 0;
+
+	if((err = av_hwdevice_ctx_create(&me->hw_device_ctx, type, NULL, NULL, 0)) < 0) 
+	{
+		dprintf("Failed to create specified HW device.\n");
+		return err;
+	}
+
+	ctx->hw_device_ctx = av_buffer_ref(me->hw_device_ctx);
+
+	return err;
+}
+
+static bool find_stream_and_open_codec(vx_video* me, enum AVMediaType type,
+	int* out_stream, AVCodecContext** out_codec_ctx, vx_error* out_error)
 {
 	AVCodec* codec;
+
 	*out_stream = av_find_best_stream(me->fmt_ctx, type, -1, -1, &codec, 0);
 
-	if(*out_stream < 0){
+	if(*out_stream < 0)
+	{
 		if(*out_stream == AVERROR_STREAM_NOT_FOUND)
 			*out_error = VX_ERR_VIDEO_STREAM;
 
@@ -119,11 +176,20 @@ static bool find_stream_and_open_codec(vx_video* me, enum AVMediaType type, int*
 
 	// Get a pointer to the codec context for the video stream
 	*out_codec_ctx = me->fmt_ctx->streams[*out_stream]->codec;
-	
-	// Open codec
-	if(avcodec_open2(*out_codec_ctx, codec, NULL) < 0){
-		*out_error = VX_ERR_OPEN_CODEC;
 
+	// Find and enable any hardware acceleration support
+	const AVCodecHWConfig *hw_config = get_hw_config(codec);
+
+	if(hw_config != NULL)
+	{
+		hw_decoder_init(me, *out_codec_ctx, hw_config->device_type);
+		me->hw_pix_fmt = hw_config->pix_fmt;
+	}
+
+	// Open codec
+	if(avcodec_open2(*out_codec_ctx, codec, NULL) < 0)
+	{
+		*out_error = VX_ERR_OPEN_CODEC;
 		return false;
 	}
 
@@ -134,8 +200,6 @@ vx_error vx_open(vx_video** video, const char* filename)
 {
 	if(!initialized){
 		initialized = true;
-		av_register_all();
-		avcodec_register_all();
 	}
 
 	vx_video* me = calloc(1, sizeof(vx_video));
@@ -151,7 +215,7 @@ vx_error vx_open(vx_video** video, const char* filename)
 	}
 
 	// Get stream information
-	if(avformat_find_stream_info(me->fmt_ctx, NULL) < 0){
+	if(avformat_find_stream_info(me->fmt_ctx, /*&options*/ NULL) < 0){
 		error = VX_ERR_STREAM_INFO;
 		goto cleanup;
 	}
@@ -324,7 +388,7 @@ const char* vx_get_audio_sample_format_str(vx_video* me)
 
 	return av_get_sample_fmt_name(me->audio_codec_ctx->sample_fmt);
 }
-
+		
 static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_frame, int* out_stream_idx)
 {
 	AVPacket packet;
@@ -389,13 +453,32 @@ static vx_error vx_decode_frame(vx_video* me, vx_frame_info* fi, AVFrame** out_f
 		if(frame_finished)
 			break;
 	}
+
+	if(frame->format == me->hw_pix_fmt)
+	{
+		AVFrame* sw_frame = av_frame_alloc();
+	
+		if(!sw_frame)
+			goto cleanup;
+	
+		if((ret = av_hwframe_transfer_data(sw_frame, frame, 0)) < 0)
+		{
+			dprintf("Error transferring the data to system memory\n");
+			goto cleanup;
+		}
 		
+		av_frame_unref(frame);
+		av_frame_free(&frame);
+
+		frame = sw_frame;
+	}
+
 	fi->flags = frame->pict_type == AV_PICTURE_TYPE_I ? VX_FF_KEYFRAME : 0;
 	fi->flags |= frame_pos < 0 ? VX_FF_BYTE_POS_GUESSED : 0;
 	fi->flags |= frame->pts > 0 ? VX_FF_HAS_PTS : 0; 
 
 	fi->pos = frame_pos >= 0 ? frame_pos : file_pos;	
-	fi->pts = av_frame_get_best_effort_timestamp(frame);
+	fi->pts = frame->best_effort_timestamp;
 	fi->dts = frame->pkt_dts;
 
 	*out_frame = frame;
@@ -424,9 +507,9 @@ static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, vx_frame* vxframe)
 		ret = VX_ERR_SCALING;
 		goto cleanup;
 	}
-
+	
 	struct SwsContext* sws_ctx = sws_getContext(me->video_codec_ctx->width, me->video_codec_ctx->height, 
-		me->video_codec_ctx->pix_fmt, vxframe->width, vxframe->height, av_pixfmt, SWS_BILINEAR, NULL, NULL, NULL);
+		frame->format, vxframe->width, vxframe->height, av_pixfmt, SWS_BILINEAR, NULL, NULL, NULL);
 
 	if(!sws_ctx){
 		ret = VX_ERR_SCALING;
@@ -445,7 +528,7 @@ cleanup:
 	return ret;
 }
 
-vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
+vx_error vx_get_frame_internal(vx_video* me, vx_frame* vxframe)
 {
 	vx_error ret = VX_ERR_UNKNOWN;
 	AVFrame* frame = NULL;
@@ -545,6 +628,26 @@ cleanup:
 	}
 
 	return ret;
+}
+
+vx_error vx_get_frame(vx_video* me, vx_frame* vxframe)
+{
+	vx_error first_error = VX_ERR_SUCCESS;
+
+	for(int i = 0; i < retry_count; i++)
+	{
+		vx_error e = vx_get_frame_internal(me, vxframe);
+
+		if(!(e == VX_ERR_UNKNOWN || e == VX_ERR_VIDEO_STREAM || e == VX_ERR_DECODE_VIDEO || 
+			e == VX_ERR_DECODE_AUDIO || e == VX_ERR_NO_AUDIO || e == VX_ERR_RESAMPLE_AUDIO))
+		{
+			return e;
+		}
+		
+		first_error = first_error != VX_ERR_SUCCESS ? first_error : e;
+	}
+
+	return first_error;
 }
 
 vx_error vx_get_frame_rate(vx_video* me, float* out_fps)
