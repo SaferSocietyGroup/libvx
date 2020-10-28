@@ -1,4 +1,4 @@
 name       example
 sourcedir  ../src .
-cflags     ggdb std=c99 Wall I../include
+cflags     ggdb std=c99 Wall I../include DDEBUG
 lib-static libavdevice libavformat libavcodec libavfilter libswscale libavutil

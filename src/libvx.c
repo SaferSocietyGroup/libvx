@@ -108,8 +108,8 @@ static vx_frame_queue_item vx_dequeue(vx_video* me)
 static const AVCodecHWConfig* get_hw_config(AVCodec* codec)
 {
 	enum AVHWDeviceType type_priority[] = {
-			AV_HWDEVICE_TYPE_D3D11VA,
 			AV_HWDEVICE_TYPE_VDPAU,
+			AV_HWDEVICE_TYPE_D3D11VA,
 			AV_HWDEVICE_TYPE_CUDA,
 			AV_HWDEVICE_TYPE_VAAPI,
 			AV_HWDEVICE_TYPE_DXVA2,
@@ -135,6 +135,8 @@ static const AVCodecHWConfig* get_hw_config(AVCodec* codec)
 				dprintf("found hardware config: %s\n", av_hwdevice_get_type_name(config->device_type));
 				return config;
 			}
+
+			if(config == NULL) break;
 		}
 	}
 

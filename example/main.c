@@ -13,7 +13,7 @@ int main(int argc, char** argv)
 		vx_video* video;
 		int frame_count = 0;
 
-		printf("=== %s ===", argv[i]);
+		printf("=== %s ===\n", argv[i]);
 		ret = vx_open(&video, argv[i]);
 		LASSERT(ret == VX_ERR_SUCCESS, "error: '%s' reported for '%s'", vx_get_error_str(ret), argv[1]);	
 
