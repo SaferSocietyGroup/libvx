@@ -205,8 +205,11 @@ vx_error vx_open(vx_video** video, const char* filename)
 	}
 
 	vx_video* me = calloc(1, sizeof(vx_video));
+
 	if(!me)
 		return VX_ERR_ALLOCATE;
+
+	me->hw_pix_fmt = AV_PIX_FMT_NONE;
 	
 	vx_error error = VX_ERR_UNKNOWN;
 
