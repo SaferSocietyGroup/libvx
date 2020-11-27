@@ -81,6 +81,7 @@ struct vx_video
 	void* count_frames_user_data;
 
 	vx_error decoding_error;
+	int open_flags;
 };
 
 static enum AVPixelFormat vx_to_av_pix_fmt(vx_pix_fmt fmt)
@@ -103,6 +104,32 @@ static void vx_enqueue(vx_video* me, vx_frame_queue_item item)
 static vx_frame_queue_item vx_dequeue(vx_video* me)
 {
 	return me->frame_queue[--me->num_queue];
+}
+
+static bool use_hw(vx_video* me, AVCodec* codec)
+{
+	if(me->open_flags & VX_OF_HW_ACCEL_ALL)
+		return true;
+	
+	if(me->open_flags & VX_OF_HW_ACCEL_720 && vx_get_height(me) >= 720)
+		return true;
+	
+	if(me->open_flags & VX_OF_HW_ACCEL_1080 && vx_get_height(me) >= 1080)
+		return true;
+	
+	if(me->open_flags & VX_OF_HW_ACCEL_1440 && vx_get_height(me) >= 1440)
+		return true;
+	
+	if(me->open_flags & VX_OF_HW_ACCEL_2160 && vx_get_height(me) >= 2160)
+		return true;
+
+	if(me->open_flags & VX_OF_HW_ACCEL_HEVC && codec->id == AV_CODEC_ID_HEVC)
+		return true;
+	
+	if(me->open_flags & VX_OF_HW_ACCEL_H264 && codec->id == AV_CODEC_ID_H264)
+		return true;
+
+	return false;
 }
 
 static const AVCodecHWConfig* get_hw_config(AVCodec* codec)
@@ -180,7 +207,7 @@ static bool find_stream_and_open_codec(vx_video* me, enum AVMediaType type,
 	*out_codec_ctx = me->fmt_ctx->streams[*out_stream]->codec;
 
 	// Find and enable any hardware acceleration support
-	const AVCodecHWConfig *hw_config = get_hw_config(codec);
+	const AVCodecHWConfig *hw_config = use_hw(me, codec) ? get_hw_config(codec) : NULL;
 
 	if(hw_config != NULL)
 	{
@@ -198,7 +225,7 @@ static bool find_stream_and_open_codec(vx_video* me, enum AVMediaType type,
 	return true;
 }
 
-vx_error vx_open(vx_video** video, const char* filename)
+vx_error vx_open(vx_video** video, const char* filename, int flags)
 {
 	if(!initialized){
 		initialized = true;
@@ -210,6 +237,7 @@ vx_error vx_open(vx_video** video, const char* filename)
 		return VX_ERR_ALLOCATE;
 
 	me->hw_pix_fmt = AV_PIX_FMT_NONE;
+	me->open_flags = flags;
 	
 	vx_error error = VX_ERR_UNKNOWN;
 

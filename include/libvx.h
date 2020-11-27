@@ -45,10 +45,22 @@ typedef enum {
 	VX_FF_HAS_PTS = 4
 } vx_frame_flag;
 
+typedef enum
+{
+	// logically OR'ed
+	VX_OF_HW_ACCEL_ALL = 1,
+	VX_OF_HW_ACCEL_720 = 2,
+	VX_OF_HW_ACCEL_1080 = 4,
+	VX_OF_HW_ACCEL_1440 = 8,
+	VX_OF_HW_ACCEL_2160 = 16,
+	VX_OF_HW_ACCEL_HEVC = 32,
+	VX_OF_HW_ACCEL_H264 = 64
+} vx_open_flags;
+
 typedef void (*vx_audio_callback)(const void* samples, int num_samples, double ts, void* user_data);
 typedef void (*vx_on_count_frames_callback)(int stream, void* user_data);
 
-vx_error vx_open(vx_video** video, const char* filename);
+vx_error vx_open(vx_video** video, const char* filename, int flags);
 void vx_close(vx_video* video);
 
 int vx_get_width(vx_video* video);

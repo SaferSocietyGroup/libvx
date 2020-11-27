@@ -74,7 +74,7 @@ int main(int argc, char** argv)
 	 
 	vx_video* video = NULL;
 
-	ret = vx_open(&video, argv[1]);
+	ret = vx_open(&video, argv[1], 0);
 	LASSERT(ret == VX_ERR_SUCCESS, "could not open file for frame counting: %s", argv[1]);	
 
 	vx_set_count_frames_cb(video, count_frames_callback, NULL);
@@ -85,7 +85,7 @@ int main(int argc, char** argv)
 	
 	printf("num_frames: %d\n", num_frames);
 
-	ret = vx_open(&video, argv[1]);
+	ret = vx_open(&video, argv[1], VX_OF_HW_ACCEL_1440);
 	LASSERT(ret == VX_ERR_SUCCESS, "could not open video file: %s", argv[1]);	
 	
 	int w = vx_get_width(video);
