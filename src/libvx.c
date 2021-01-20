@@ -145,7 +145,6 @@ static const AVCodecHWConfig* get_hw_config(AVCodec* codec)
 			AV_HWDEVICE_TYPE_DRM,
 			AV_HWDEVICE_TYPE_OPENCL,
 			AV_HWDEVICE_TYPE_MEDIACODEC,
-			AV_HWDEVICE_TYPE_VULKAN
 	};
 
 	for(int j = 0; j < sizeof(type_priority) / sizeof(enum AVHWDeviceType); j++)
