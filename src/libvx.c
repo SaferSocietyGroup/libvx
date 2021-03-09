@@ -533,15 +533,12 @@ static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, vx_frame* vxframe)
 {
 	vx_error ret = VX_ERR_UNKNOWN;
 
-	AVPicture pict;
 	int av_pixfmt = vx_to_av_pix_fmt(vxframe->pix_fmt);
-	if(avpicture_fill(&pict, vxframe->buffer, av_pixfmt, vxframe->width, vxframe->height) < 0){
-		ret = VX_ERR_SCALING;
-		goto cleanup;
-	}
 	
-	struct SwsContext* sws_ctx = sws_getContext(me->video_codec_ctx->width, me->video_codec_ctx->height, 
-		frame->format, vxframe->width, vxframe->height, av_pixfmt, SWS_BILINEAR, NULL, NULL, NULL);
+	struct SwsContext* sws_ctx = sws_getContext(
+		frame->width, frame->height, frame->format, 
+		vxframe->width, vxframe->height, av_pixfmt,
+		SWS_FAST_BILINEAR, NULL, NULL, NULL);
 
 	if(!sws_ctx){
 		ret = VX_ERR_SCALING;
@@ -550,13 +547,18 @@ static vx_error vx_scale_frame(vx_video* me, AVFrame* frame, vx_frame* vxframe)
 
 	assert(frame->data);
 
-	sws_scale(sws_ctx, (const uint8_t* const*)frame->data, frame->linesize, 0, me->video_codec_ctx->height, pict.data, pict.linesize); 
+	int fmtBytesPerPixel[3] = {3, 1, 4};
+
+	uint8_t* pixels[3] = { vxframe->buffer, 0, 0 };
+	int pitch[3] = {fmtBytesPerPixel[vxframe->pix_fmt] * vxframe->width, 0, 0};
+
+	sws_scale(sws_ctx, (const uint8_t* const*)frame->data, frame->linesize, 0, frame->height, pixels, pitch); 
+
 	sws_freeContext(sws_ctx);
 	
 	return VX_ERR_SUCCESS;
 
 cleanup:
-
 	return ret;
 }
 
